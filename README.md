@@ -67,7 +67,7 @@ You can also trigger the workflow manually from the **Actions** tab in GitHub.
 
 If you want to incorporate code changes made to this upstream boilerplate after you forked — for example, a new block or a bug fix in `scripts/` — you can do so by adding this repo as a git remote and merging selectively. This is entirely optional. Upstream changes may conflict with modifications you have made to your fork, so expect to resolve conflicts manually. There is no guarantee of a clean merge, and nothing in your project depends on staying in sync with the upstream boilerplate code.
 
-## Changelog
+## Changelog 
 
 Major changes to this boilerplate are described and documented as part of pull requests and tracked via the `changelog` tag. This log documents changes to the canonical starting point — not upgrades that forked implementations must apply. Review it if you are considering pulling specific upstream changes into your fork:
 
