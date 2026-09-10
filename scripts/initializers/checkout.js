@@ -32,5 +32,13 @@ await initializeDropin(async () => {
       },
     },
     langDefinitions,
+    models: {
+      CartModel: {
+        transformer: (data) => ({
+          availablePaymentMethods: data?.available_payment_methods,
+          selectedPaymentMethod: data?.selected_payment_method,
+        }),
+      },
+    },
   });
 })();

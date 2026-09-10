@@ -61,6 +61,7 @@ import {
 } from '@dropins/storefront-checkout/lib/utils.js';
 
 import { showModal, swatchImageSlot } from './utils.js';
+import { slimCdPaymentMethodsOptions } from '../../scripts/slimcd-payment/integration.js';
 
 // External dependencies
 import {
@@ -341,6 +342,7 @@ export const renderShippingMethods = async (container) => renderContainer(
 export const renderPaymentMethods = async (container, creditCardFormRef) => renderContainer(
   CONTAINERS.PAYMENT_METHODS,
   async () => CheckoutProvider.render(PaymentMethods, {
+    ...slimCdPaymentMethodsOptions,
     slots: {
       Methods: {
         [PaymentMethodCode.CREDIT_CARD]: {

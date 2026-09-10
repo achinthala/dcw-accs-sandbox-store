@@ -22,6 +22,12 @@ import { PaymentMethodCode } from '@dropins/storefront-payment-services/api.js';
 // Block Utilities
 import { getConfigValue } from '@dropins/tools/lib/aem/configs.js';
 import { buildOrderDetailsUrl, displayOverlaySpinner, removeOverlaySpinner } from './utils.js';
+import {
+  getSlimCdGraphqlHeaders,
+  handleSlimCdPlaceOrder,
+  isSlimCdPaymentMethod,
+  resumeSlimCdCheckoutOnReturn,
+} from '../../scripts/slimcd-payment/integration.js';
 
 // Fragment functions
 import { createCheckoutFragment, selectors } from './fragments.js';
@@ -117,6 +123,23 @@ export default async function decorate(block) {
   const billingFormRef = { current: null };
   const creditCardFormRef = { current: null };
   const loaderRef = { current: null };
+  let latestCheckoutCart = null;
+
+  events.on('checkout/initialized', (data) => {
+    latestCheckoutCart = data;
+  }, { eager: true });
+  events.on('checkout/updated', (data) => {
+    latestCheckoutCart = data;
+  }, { eager: true });
+
+  const placeCommerceOrder = async (cartId) => {
+    const shouldPlacePurchaseOrder = isB2BEnabled && b2bIsPoEnabled && b2bPoApi;
+    if (shouldPlacePurchaseOrder) {
+      await b2bPoApi.placePurchaseOrder(cartId);
+    } else {
+      await orderApi.placeOrder(cartId);
+    }
+  };
 
   events.on('order/placed', () => {
     setMetaTags('Order Confirmation');
@@ -176,13 +199,23 @@ export default async function decorate(block) {
         await creditCardFormRef.current.submit();
       }
 
-      const shouldPlacePurchaseOrder = isB2BEnabled && b2bIsPoEnabled && b2bPoApi;
+      if (isSlimCdPaymentMethod(code)) {
+        if (!latestCheckoutCart) {
+          throw new Error('Checkout cart is not loaded yet. Please try again.');
+        }
 
-      if (shouldPlacePurchaseOrder) {
-        await b2bPoApi.placePurchaseOrder(cartId);
-      } else {
-        await orderApi.placeOrder(cartId);
+        await handleSlimCdPlaceOrder({
+          cartId,
+          code,
+          cart: latestCheckoutCart,
+          graphqlEndpoint: getConfigValue('commerce-endpoint'),
+          graphqlHeaders: getSlimCdGraphqlHeaders(),
+          placeOrder: placeCommerceOrder,
+        });
+        return;
       }
+
+      await placeCommerceOrder(cartId);
     } catch (error) {
       console.error(error);
       throw error;
@@ -356,4 +389,12 @@ export default async function decorate(block) {
   events.on('cart/initialized', redirectToCartIfEmpty, { eager: true });
   events.on('cart/data', redirectToCartIfEmpty);
   events.on('purchase-order/placed', handlePurchaseOrderPlaced);
+
+  await resumeSlimCdCheckoutOnReturn({
+    placeOrder: placeCommerceOrder,
+    onError: (error) => {
+      console.error('[SlimCD]', error);
+      window.alert(error.message || 'SlimCD payment failed. Please try again.');
+    },
+  });
 }
