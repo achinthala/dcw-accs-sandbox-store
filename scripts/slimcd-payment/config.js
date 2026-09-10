@@ -2,7 +2,11 @@ import { STOREFRONT_BY_CODE } from './constants.js';
 
 function readCustomConfig(oopeConfig) {
   const map = {};
-  for (const entry of oopeConfig?.custom_config || []) {
+  const entries = oopeConfig?.custom_config
+    || oopeConfig?.customConfig
+    || [];
+
+  for (const entry of entries) {
     if (entry?.key !== undefined) {
       map[entry.key] = entry.value;
     }
@@ -19,9 +23,13 @@ export function resolveSlimCdMethodConfig(paymentMethod) {
   const custom = readCustomConfig(oope);
   const code = paymentMethod?.code || '';
   const createSessionUrl = custom.create_session_url
+    || custom.createSessionUrl
     || oope?.backend_integration_url
+    || oope?.backendIntegrationUrl
     || '';
-  const checkSessionUrl = custom.check_session_url || deriveSiblingActionUrl(createSessionUrl, 'check-payment-session');
+  const checkSessionUrl = custom.check_session_url
+    || custom.checkSessionUrl
+    || deriveSiblingActionUrl(createSessionUrl, 'check-payment-session');
 
   return {
     code,
@@ -45,5 +53,18 @@ export function findCartPaymentMethod(cart, code) {
     || cart?.available_payment_methods
     || [];
 
-  return methods.find((method) => method.code === code) || null;
+  const available = methods.find((method) => method.code === code);
+  if (available) {
+    return available;
+  }
+
+  const selected = cart?.selectedPaymentMethod
+    || cart?.selected_payment_method
+    || null;
+
+  if (selected?.code === code) {
+    return selected;
+  }
+
+  return null;
 }

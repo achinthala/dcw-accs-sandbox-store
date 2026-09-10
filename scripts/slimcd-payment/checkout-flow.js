@@ -66,7 +66,14 @@ export async function startSlimCdHostedPayment({
 
   const config = resolveSlimCdMethodConfig(method);
   if (!config.createSessionUrl || !config.checkSessionUrl) {
-    throw new Error('SlimCD action URLs are missing from OOPE payment method config');
+    console.error('[SlimCD] OOPE payment method config:', method);
+    throw new Error(
+      'SlimCD action URLs are missing. Upgrade/reinstall the SlimCD app in Commerce Admin so OOPE custom_config includes create_session_url and check_session_url.',
+    );
+  }
+
+  if (!config.storefront) {
+    throw new Error(`SlimCD storefront mapping is missing for payment method ${paymentCode}`);
   }
 
   const amount = formatAmount(resolveCartGrandTotal(cart));
@@ -169,6 +176,13 @@ export async function completeSlimCdHostedPayment({
  * Place-order handler for Commerce checkout drop-ins.
  * Redirects to SlimCD unless we are completing a return URL flow.
  */
+export function resolveSlimCdPaymentCode(cart, code) {
+  return code
+    || cart?.selectedPaymentMethod?.code
+    || cart?.selected_payment_method?.code
+    || '';
+}
+
 export async function handleSlimCdPlaceOrder({
   cartId,
   code,
@@ -177,14 +191,16 @@ export async function handleSlimCdPlaceOrder({
   graphqlHeaders,
   placeOrder,
 }) {
-  if (!isSlimCdPaymentMethod(code)) {
+  const paymentCode = resolveSlimCdPaymentCode(cart, code);
+
+  if (!isSlimCdPaymentMethod(paymentCode)) {
     await placeOrder(cartId);
     return;
   }
 
   await startSlimCdHostedPayment({
-    cart,
-    paymentCode: code,
+    cart: { ...cart, id: cart?.id || cartId },
+    paymentCode,
     graphqlEndpoint,
     graphqlHeaders,
   });

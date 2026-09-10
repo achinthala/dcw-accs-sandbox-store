@@ -28,6 +28,7 @@ import {
   isSlimCdPaymentMethod,
   resumeSlimCdCheckoutOnReturn,
 } from '../../scripts/slimcd-payment/integration.js';
+import { resolveSlimCdPaymentCode } from '../../scripts/slimcd-payment/checkout-flow.js';
 
 // Fragment functions
 import { createCheckoutFragment, selectors } from './fragments.js';
@@ -184,9 +185,11 @@ export default async function decorate(block) {
 
   const handlePlaceOrder = async ({ cartId, code }) => {
     await displayOverlaySpinner(loaderRef, $loader, $loaderStatus);
+    const paymentCode = resolveSlimCdPaymentCode(latestCheckoutCart, code);
+
     try {
       // Payment Services credit card
-      if (code === PaymentMethodCode.CREDIT_CARD) {
+      if (paymentCode === PaymentMethodCode.CREDIT_CARD) {
         if (!creditCardFormRef.current) {
           console.error('Credit card form not rendered.');
           return;
@@ -199,14 +202,14 @@ export default async function decorate(block) {
         await creditCardFormRef.current.submit();
       }
 
-      if (isSlimCdPaymentMethod(code)) {
+      if (isSlimCdPaymentMethod(paymentCode)) {
         if (!latestCheckoutCart) {
           throw new Error('Checkout cart is not loaded yet. Please try again.');
         }
 
         await handleSlimCdPlaceOrder({
           cartId,
-          code,
+          code: paymentCode,
           cart: latestCheckoutCart,
           graphqlEndpoint: getConfigValue('commerce-endpoint'),
           graphqlHeaders: getSlimCdGraphqlHeaders(),
@@ -217,7 +220,13 @@ export default async function decorate(block) {
 
       await placeCommerceOrder(cartId);
     } catch (error) {
-      console.error(error);
+      const message = error?.message
+        || error?.[0]?.message
+        || (typeof error === 'string' ? error : null);
+      console.error('[Checkout place order]', error);
+      if (message) {
+        throw new Error(message);
+      }
       throw error;
     } finally {
       removeOverlaySpinner(loaderRef, $loader, $loaderStatus);

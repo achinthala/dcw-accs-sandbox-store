@@ -1,16 +1,20 @@
 async function parseJsonResponse(response) {
   const text = await response.text();
-  let payload;
-  try {
-    payload = JSON.parse(text);
-  } catch (error) {
-    throw new Error(`Invalid JSON from payment service (${response.status})`);
+  let payload = {};
+
+  if (text) {
+    try {
+      payload = JSON.parse(text);
+    } catch (error) {
+      throw new Error(`Invalid JSON from payment service (${response.status}): ${text.slice(0, 200)}`);
+    }
   }
 
   const body = payload?.body ?? payload;
-  if (!response.ok) {
-    const message = body?.error || body?.message || text;
-    throw new Error(message || `Payment request failed (${response.status})`);
+  const errorMessage = body?.error || payload?.error;
+
+  if (!response.ok || errorMessage) {
+    throw new Error(errorMessage || body?.message || `Payment request failed (${response.status})`);
   }
 
   return body;
@@ -25,6 +29,10 @@ export async function createPaymentSession({
   currency,
   returnUrl,
 }) {
+  if (!createSessionUrl) {
+    throw new Error('SlimCD create-payment-session URL is not configured');
+  }
+
   const response = await fetch(createSessionUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -37,7 +45,15 @@ export async function createPaymentSession({
     }),
   });
 
-  return parseJsonResponse(response);
+  const body = await parseJsonResponse(response);
+
+  if (!body?.sessionId || !body?.hostedPageUrl) {
+    throw new Error(
+      `SlimCD session response is incomplete: ${JSON.stringify(body).slice(0, 200)}`,
+    );
+  }
+
+  return body;
 }
 
 /** Poll SlimCD session approval and return gateid. */
@@ -46,6 +62,10 @@ export async function checkPaymentSession({
   storefront,
   sessionId,
 }) {
+  if (!checkSessionUrl) {
+    throw new Error('SlimCD check-payment-session URL is not configured');
+  }
+
   const response = await fetch(checkSessionUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
