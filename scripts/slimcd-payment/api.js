@@ -28,6 +28,8 @@ export async function createPaymentSession({
   orderRef,
   currency,
   returnUrl,
+  cartId,
+  paymentCode,
 }) {
   if (!createSessionUrl) {
     throw new Error('SlimCD create-payment-session URL is not configured');
@@ -42,6 +44,8 @@ export async function createPaymentSession({
       orderRef,
       currency,
       returnUrl,
+      cartId,
+      paymentCode,
     }),
   });
 
@@ -66,13 +70,15 @@ export async function checkPaymentSession({
     throw new Error('SlimCD check-payment-session URL is not configured');
   }
 
+  const payload = { sessionId };
+  if (storefront) {
+    payload.storefront = storefront;
+  }
+
   const response = await fetch(checkSessionUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      storefront,
-      sessionId,
-    }),
+    body: JSON.stringify(payload),
   });
 
   return parseJsonResponse(response);

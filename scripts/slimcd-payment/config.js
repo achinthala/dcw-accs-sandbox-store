@@ -5,7 +5,7 @@ function resolveRuntimeBaseUrl() {
   return getConfigValue('slimcd-runtime-base-url') || SLIMCD_RUNTIME_BASE_URL;
 }
 
-function buildRuntimeActionUrl(actionName) {
+export function buildRuntimeActionUrl(actionName) {
   const base = resolveRuntimeBaseUrl();
   if (!base) {
     return '';

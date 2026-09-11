@@ -116,6 +116,12 @@ export default async function decorate(block) {
   setMetaTags('Checkout');
   document.title = 'Checkout';
 
+  const initialReturnParams = new URLSearchParams(window.location.search);
+  const isReturningFromSlimCd = isSlimCdCheckoutReturn(initialReturnParams);
+  if (isReturningFromSlimCd) {
+    block.innerHTML = '<p class="slimcd-checkout-resume">Completing your order…</p>';
+  }
+
   const cartData = events.lastPayload('cart/initialized');
   redirectToCartIfEmpty(cartData);
 
@@ -183,14 +189,7 @@ export default async function decorate(block) {
 
   const returnParamsAfterResume = new URLSearchParams(window.location.search);
   if (isSlimCdCheckoutReturn(returnParamsAfterResume)) {
-    const sessionId = returnParamsAfterResume.get('sessionid')
-      || returnParamsAfterResume.get('sessionId')
-      || 'unknown';
-    console.warn('[SlimCD] Payment return detected but checkout session could not be restored.', { sessionId });
-    window.alert(
-      `Your card payment was received by SlimCD, but the order could not be completed automatically. `
-      + `Please contact support with SlimCD session ID: ${sessionId}. Do not pay again.`,
-    );
+    console.warn('[SlimCD] Payment return detected but order completion did not finish.');
   }
 
   events.on('order/placed', () => {

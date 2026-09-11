@@ -1,9 +1,22 @@
-import { getCartDataFromCache } from '@dropins/storefront-cart/api.js';
+import {
+  getCartDataFromCache,
+  getCartData,
+  initializeCart,
+} from '@dropins/storefront-cart/api.js';
 import { events } from '@dropins/tools/event-bus.js';
 import { SLIMCD_PAYMENT_CODES, RETURN_QUERY_FLAG } from './constants.js';
 import { createPaymentSession, checkPaymentSession } from './api.js';
-import { resolveSlimCdMethodConfig, findCartPaymentMethod } from './config.js';
-import { saveCheckoutSession, loadCheckoutSession, clearCheckoutSession } from './storage.js';
+import {
+  resolveSlimCdMethodConfig,
+  findCartPaymentMethod,
+  buildRuntimeActionUrl,
+} from './config.js';
+import {
+  saveCheckoutSession,
+  loadCheckoutSession,
+  loadCheckoutSessionFromCookie,
+  clearCheckoutSession,
+} from './storage.js';
 import { setSlimCdPaymentMethodOnCart } from './graphql.js';
 
 export function isSlimCdPaymentMethod(code) {
@@ -73,31 +86,91 @@ function resolveSlimCdPaymentCodeFromCart(cart, params) {
   return match?.code || SLIMCD_PAYMENT_CODES[0];
 }
 
-function reconstructPendingSession(params, cart, { graphqlEndpoint, graphqlHeaders }) {
-  const sessionId = normalizeSessionId(resolveSlimCdReturnSessionId(params));
-  if (!sessionId || !cart?.id) {
+function readDropinCartId() {
+  const cartDataRaw = sessionStorage.getItem('DROPIN__CART__CART__DATA');
+  if (cartDataRaw) {
+    try {
+      const parsed = JSON.parse(cartDataRaw);
+      if (parsed?.id) {
+        return parsed;
+      }
+    } catch (error) {
+      // ignore malformed cache
+    }
+  }
+
+  const cartId = sessionStorage.getItem('DROPINS_CART_ID')
+    || (() => {
+      const match = document.cookie.match(/(?:^|; )DROPIN__CART__CART-ID=([^;]*)/);
+      return match ? decodeURIComponent(match[1]) : null;
+    })();
+
+  return cartId ? { id: cartId } : null;
+}
+
+function resolveStoredCartReference() {
+  const cached = getCartDataFromCache();
+  if (cached?.id) {
+    return cached;
+  }
+
+  return readDropinCartId();
+}
+
+function resolvePendingAmount(cart, pendingAmount) {
+  if (pendingAmount) {
+    return pendingAmount;
+  }
+
+  const total = resolveCartGrandTotal(cart);
+  if (total === undefined || total === null || Number.isNaN(Number(total))) {
     return null;
   }
 
-  const paymentCode = resolveSlimCdPaymentCodeFromCart(cart, params);
-  const method = findCartPaymentMethod(cart, paymentCode) || { code: paymentCode };
+  return formatAmount(total);
+}
+
+function enrichPendingSession(pending, { graphqlEndpoint, graphqlHeaders }) {
+  const paymentCode = pending.paymentCode || SLIMCD_PAYMENT_CODES[0];
+  const config = resolveSlimCdMethodConfig({ code: paymentCode });
+
+  return {
+    ...pending,
+    paymentCode,
+    checkSessionUrl: pending.checkSessionUrl || config.checkSessionUrl,
+    storefront: pending.storefront || config.storefront,
+    graphqlEndpoint: pending.graphqlEndpoint || graphqlEndpoint,
+    graphqlHeaders: pending.graphqlHeaders || graphqlHeaders,
+  };
+}
+
+function reconstructPendingSession(params, cart, ctx, storedPartial = null) {
+  const sessionId = normalizeSessionId(resolveSlimCdReturnSessionId(params));
+  const cartId = storedPartial?.cartId || cart?.id;
+  if (!sessionId || !cartId) {
+    return null;
+  }
+
+  const paymentCode = storedPartial?.paymentCode
+    || resolveSlimCdPaymentCodeFromCart(cart || {}, params);
+  const method = findCartPaymentMethod(cart || { code: paymentCode }, paymentCode)
+    || { code: paymentCode };
   const config = resolveSlimCdMethodConfig(method);
   if (!config.checkSessionUrl || !config.storefront) {
     return null;
   }
 
-  const amount = formatAmount(resolveCartGrandTotal(cart));
-  return {
-    cartId: cart.id,
+  const amount = resolvePendingAmount(cart, storedPartial?.amount);
+
+  return enrichPendingSession({
+    cartId,
     paymentCode,
     sessionId,
-    storefront: config.storefront,
-    orderRef: String(cart.id).slice(0, 20),
-    amount,
+    storefront: storedPartial?.storefront || config.storefront,
+    orderRef: storedPartial?.orderRef || String(cartId).slice(0, 20),
+    amount: amount || storedPartial?.amount || null,
     checkSessionUrl: config.checkSessionUrl,
-    graphqlEndpoint,
-    graphqlHeaders,
-  };
+  }, ctx);
 }
 
 function resolvePendingCheckoutSession({ cart, graphqlEndpoint, graphqlHeaders } = {}) {
@@ -108,12 +181,22 @@ function resolvePendingCheckoutSession({ cart, graphqlEndpoint, graphqlHeaders }
 
   const sessionId = normalizeSessionId(resolveSlimCdReturnSessionId(params));
   let pending = loadCheckoutSession(sessionId);
-  if (!pending && cart?.id) {
-    pending = reconstructPendingSession(params, cart, { graphqlEndpoint, graphqlHeaders });
+
+  if (!pending) {
+    const cartRef = cart?.id ? cart : resolveStoredCartReference();
+    pending = reconstructPendingSession(
+      params,
+      cartRef,
+      { graphqlEndpoint, graphqlHeaders },
+      loadCheckoutSessionFromCookie(sessionId),
+    );
   }
+
   if (!pending) {
     return null;
   }
+
+  pending = enrichPendingSession(pending, { graphqlEndpoint, graphqlHeaders });
 
   const cartId = params.get('slimcd_cart');
   const paymentCode = params.get('slimcd_pay');
@@ -136,10 +219,32 @@ function resolvePendingCheckoutSession({ cart, graphqlEndpoint, graphqlHeaders }
   return pending;
 }
 
-function waitForCartData(timeoutMs = 12000) {
-  const cached = getCartDataFromCache();
-  if (cached?.id) {
-    return Promise.resolve(cached);
+async function waitForCartData(timeoutMs = 15000) {
+  const stored = resolveStoredCartReference();
+  if (stored?.id && stored?.items?.length) {
+    return stored;
+  }
+
+  try {
+    const initialized = await initializeCart();
+    if (initialized?.id) {
+      return initialized;
+    }
+  } catch (error) {
+    console.warn('[SlimCD] initializeCart during return failed', error);
+  }
+
+  try {
+    const fetched = await getCartData();
+    if (fetched?.id) {
+      return fetched;
+    }
+  } catch (error) {
+    console.warn('[SlimCD] getCartData during return failed', error);
+  }
+
+  if (stored?.id) {
+    return stored;
   }
 
   return new Promise((resolve) => {
@@ -257,6 +362,8 @@ export async function startSlimCdHostedPayment({
     orderRef,
     currency,
     returnUrl: buildReturnUrl({ cartId, paymentCode }),
+    cartId,
+    paymentCode,
   });
 
   saveCheckoutSession({
@@ -280,8 +387,55 @@ export async function startSlimCdHostedPayment({
   window.location.assign(hostedPageUrl);
 }
 
+function buildPendingFromResolution({
+  verified,
+  localPending,
+  sessionId,
+  checkSessionUrl,
+  graphqlEndpoint,
+  graphqlHeaders,
+  cart,
+}) {
+  if (verified?.cartId && verified?.paymentCode) {
+    return {
+      cartId: verified.cartId,
+      paymentCode: verified.paymentCode,
+      sessionId: verified.sessionId || sessionId,
+      storefront: verified.storefront,
+      orderRef: verified.orderRef || String(verified.cartId).slice(0, 20),
+      amount: verified.amount,
+      checkSessionUrl,
+      graphqlEndpoint,
+      graphqlHeaders,
+    };
+  }
+
+  if (localPending) {
+    return localPending;
+  }
+
+  if (verified?.storefront && cart?.id) {
+    return reconstructPendingSession(
+      new URLSearchParams(window.location.search),
+      cart,
+      { graphqlEndpoint, graphqlHeaders },
+      {
+        cartId: cart.id,
+        paymentCode: resolveSlimCdPaymentCodeFromCart(cart, new URLSearchParams(window.location.search)),
+        storefront: verified.storefront,
+        amount: verified.amount,
+        orderRef: String(cart.id).slice(0, 20),
+      },
+    );
+  }
+
+  return null;
+}
+
 /**
  * Step 2 — after SlimCD redirect, verify session, set payment method, place order.
+ * Follows SlimCD WEB flow: PostBack stores server-side result, redirect passes sessionid only.
+ * @see https://developer.slimcd.com/hosted-payment-pages/
  */
 export async function completeSlimCdHostedPayment({
   placeOrder,
@@ -295,43 +449,76 @@ export async function completeSlimCdHostedPayment({
     return false;
   }
 
+  const sessionId = normalizeSessionId(resolveSlimCdReturnSessionId(params));
+  if (!sessionId) {
+    return false;
+  }
+
   const cart = await waitForCartData();
-  const pending = resolvePendingCheckoutSession({
+  const localPending = resolvePendingCheckoutSession({
     cart,
     graphqlEndpoint,
     graphqlHeaders,
   });
-  if (!pending) {
+  const checkSessionUrl = localPending?.checkSessionUrl
+    || buildRuntimeActionUrl('check-payment-session');
+
+  if (!checkSessionUrl) {
+    console.warn('[SlimCD] check-payment-session URL is not configured');
     return false;
   }
 
   try {
     const verified = await checkPaymentSession({
-      checkSessionUrl: pending.checkSessionUrl,
-      storefront: pending.storefront,
-      sessionId: pending.sessionId,
+      checkSessionUrl,
+      sessionId,
+      storefront: localPending?.storefront,
     });
 
     if (!verified.approved || !verified.gateid) {
       throw new Error('SlimCD payment was not approved');
     }
 
+    const pending = buildPendingFromResolution({
+      verified,
+      localPending,
+      sessionId,
+      checkSessionUrl,
+      graphqlEndpoint,
+      graphqlHeaders,
+      cart,
+    });
+
+    if (!pending?.cartId) {
+      throw new Error(
+        'Payment was approved but the cart could not be restored. Please contact support with your SlimCD session ID.',
+      );
+    }
+
+    const amount = pending.amount
+      || (verified.amount ? formatAmount(verified.amount) : null)
+      || resolvePendingAmount(cart, null);
+
+    if (!amount) {
+      throw new Error('Could not determine order amount for SlimCD payment completion');
+    }
+
     await setSlimCdPaymentMethodOnCart({
-      endpoint: pending.graphqlEndpoint,
+      endpoint: pending.graphqlEndpoint || graphqlEndpoint,
       cartId: pending.cartId,
       code: pending.paymentCode,
       additionalData: buildAdditionalData({
-        sessionId: pending.sessionId,
+        sessionId: pending.sessionId || sessionId,
         gateid: verified.gateid,
-        storefront: pending.storefront,
+        storefront: pending.storefront || verified.storefront,
         orderRef: pending.orderRef,
-        amount: pending.amount,
+        amount,
       }),
-      headers: pending.graphqlHeaders,
+      headers: pending.graphqlHeaders || graphqlHeaders,
     });
 
     const orderData = await placeOrder(pending.cartId);
-    clearCheckoutSession(pending.sessionId);
+    clearCheckoutSession(pending.sessionId || sessionId);
 
     const cleanUrl = new URL(window.location.href);
     cleanUrl.searchParams.delete(RETURN_QUERY_FLAG);
@@ -348,6 +535,7 @@ export async function completeSlimCdHostedPayment({
 
     return orderData || true;
   } catch (error) {
+    console.error('[SlimCD] Hosted return failed', { sessionId, error });
     if (onError) {
       onError(error);
     } else {
