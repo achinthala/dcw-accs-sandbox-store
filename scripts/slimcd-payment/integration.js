@@ -32,8 +32,16 @@ export async function resumeSlimCdCheckoutOnReturn({
   placeOrder,
   onError,
   onSuccess,
+  graphqlEndpoint,
+  graphqlHeaders,
 }) {
-  return completeSlimCdHostedPayment({ placeOrder, onError, onSuccess });
+  return completeSlimCdHostedPayment({
+    placeOrder,
+    onError,
+    onSuccess,
+    graphqlEndpoint,
+    graphqlHeaders,
+  });
 }
 
 /**

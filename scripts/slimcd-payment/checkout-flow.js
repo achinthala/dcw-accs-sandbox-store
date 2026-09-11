@@ -1,4 +1,5 @@
 import { getCartDataFromCache } from '@dropins/storefront-cart/api.js';
+import { events } from '@dropins/tools/event-bus.js';
 import { SLIMCD_PAYMENT_CODES, RETURN_QUERY_FLAG } from './constants.js';
 import { createPaymentSession, checkPaymentSession } from './api.js';
 import { resolveSlimCdMethodConfig, findCartPaymentMethod } from './config.js';
@@ -49,20 +50,73 @@ export function isSlimCdCheckoutReturn(params) {
   return params.get(RETURN_QUERY_FLAG) === '1' || Boolean(resolveSlimCdReturnSessionId(params));
 }
 
-function resolvePendingCheckoutSession() {
+function normalizeSessionId(sessionId) {
+  return String(sessionId || '').toUpperCase();
+}
+
+function resolveSlimCdPaymentCodeFromCart(cart, params) {
+  const fromUrl = params.get('slimcd_pay');
+  if (fromUrl && isSlimCdPaymentMethod(fromUrl)) {
+    return fromUrl;
+  }
+
+  const selected = cart?.selectedPaymentMethod?.code
+    || cart?.selected_payment_method?.code;
+  if (selected && isSlimCdPaymentMethod(selected)) {
+    return selected;
+  }
+
+  const methods = cart?.availablePaymentMethods
+    || cart?.available_payment_methods
+    || [];
+  const match = methods.find((method) => isSlimCdPaymentMethod(method.code));
+  return match?.code || SLIMCD_PAYMENT_CODES[0];
+}
+
+function reconstructPendingSession(params, cart, { graphqlEndpoint, graphqlHeaders }) {
+  const sessionId = normalizeSessionId(resolveSlimCdReturnSessionId(params));
+  if (!sessionId || !cart?.id) {
+    return null;
+  }
+
+  const paymentCode = resolveSlimCdPaymentCodeFromCart(cart, params);
+  const method = findCartPaymentMethod(cart, paymentCode) || { code: paymentCode };
+  const config = resolveSlimCdMethodConfig(method);
+  if (!config.checkSessionUrl || !config.storefront) {
+    return null;
+  }
+
+  const amount = formatAmount(resolveCartGrandTotal(cart));
+  return {
+    cartId: cart.id,
+    paymentCode,
+    sessionId,
+    storefront: config.storefront,
+    orderRef: String(cart.id).slice(0, 20),
+    amount,
+    checkSessionUrl: config.checkSessionUrl,
+    graphqlEndpoint,
+    graphqlHeaders,
+  };
+}
+
+function resolvePendingCheckoutSession({ cart, graphqlEndpoint, graphqlHeaders } = {}) {
   const params = new URLSearchParams(window.location.search);
   if (!isSlimCdCheckoutReturn(params)) {
     return null;
   }
 
-  const pending = loadCheckoutSession();
+  const sessionId = normalizeSessionId(resolveSlimCdReturnSessionId(params));
+  let pending = loadCheckoutSession(sessionId);
+  if (!pending && cart?.id) {
+    pending = reconstructPendingSession(params, cart, { graphqlEndpoint, graphqlHeaders });
+  }
   if (!pending) {
     return null;
   }
 
   const cartId = params.get('slimcd_cart');
   const paymentCode = params.get('slimcd_pay');
-  const sessionId = resolveSlimCdReturnSessionId(params);
 
   if (cartId && pending.cartId && pending.cartId !== cartId) {
     return null;
@@ -70,11 +124,57 @@ function resolvePendingCheckoutSession() {
   if (paymentCode && pending.paymentCode && pending.paymentCode !== paymentCode) {
     return null;
   }
-  if (sessionId && pending.sessionId && pending.sessionId !== sessionId) {
+  if (sessionId && pending.sessionId
+    && normalizeSessionId(pending.sessionId) !== sessionId) {
     return null;
   }
 
+  if (sessionId) {
+    pending = { ...pending, sessionId };
+  }
+
   return pending;
+}
+
+function waitForCartData(timeoutMs = 12000) {
+  const cached = getCartDataFromCache();
+  if (cached?.id) {
+    return Promise.resolve(cached);
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+
+    const settle = (cart) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      events.off('cart/data', onCartData);
+      events.off('cart/initialized', onCartData);
+      events.off('checkout/initialized', onCheckout);
+      resolve(cart?.id ? cart : getCartDataFromCache());
+    };
+
+    const onCartData = (data) => {
+      if (data?.id) {
+        settle(data);
+      }
+    };
+
+    const onCheckout = (data) => {
+      if (data?.id) {
+        settle(data);
+      }
+    };
+
+    const timer = setTimeout(() => settle(getCartDataFromCache()), timeoutMs);
+
+    events.on('cart/data', onCartData);
+    events.on('cart/initialized', onCartData, { eager: true });
+    events.on('checkout/initialized', onCheckout, { eager: true });
+  });
 }
 
 function decorateHostedPageUrl(hostedPageUrl, { sessionId, cartId, paymentCode }) {
@@ -187,8 +287,20 @@ export async function completeSlimCdHostedPayment({
   placeOrder,
   onError,
   onSuccess,
+  graphqlEndpoint,
+  graphqlHeaders,
 }) {
-  const pending = resolvePendingCheckoutSession();
+  const params = new URLSearchParams(window.location.search);
+  if (!isSlimCdCheckoutReturn(params)) {
+    return false;
+  }
+
+  const cart = await waitForCartData();
+  const pending = resolvePendingCheckoutSession({
+    cart,
+    graphqlEndpoint,
+    graphqlHeaders,
+  });
   if (!pending) {
     return false;
   }
@@ -219,7 +331,7 @@ export async function completeSlimCdHostedPayment({
     });
 
     const orderData = await placeOrder(pending.cartId);
-    clearCheckoutSession();
+    clearCheckoutSession(pending.sessionId);
 
     const cleanUrl = new URL(window.location.href);
     cleanUrl.searchParams.delete(RETURN_QUERY_FLAG);
@@ -236,7 +348,6 @@ export async function completeSlimCdHostedPayment({
 
     return orderData || true;
   } catch (error) {
-    clearCheckoutSession();
     if (onError) {
       onError(error);
     } else {

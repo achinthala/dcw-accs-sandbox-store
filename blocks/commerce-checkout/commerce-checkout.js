@@ -169,6 +169,8 @@ export default async function decorate(block) {
   const slimCdReturnCompleted = await resumeSlimCdCheckoutOnReturn({
     placeOrder: placeCommerceOrder,
     onSuccess: showCheckoutSuccess,
+    graphqlEndpoint: getConfigValue('commerce-endpoint'),
+    graphqlHeaders: getSlimCdGraphqlHeaders(),
     onError: (error) => {
       console.error('[SlimCD]', error);
       window.alert(error.message || 'SlimCD payment failed. Please try again.');
@@ -181,7 +183,14 @@ export default async function decorate(block) {
 
   const returnParamsAfterResume = new URLSearchParams(window.location.search);
   if (isSlimCdCheckoutReturn(returnParamsAfterResume)) {
-    console.warn('[SlimCD] Payment return detected but checkout session could not be restored. Do not place the order again — contact support if you were charged.');
+    const sessionId = returnParamsAfterResume.get('sessionid')
+      || returnParamsAfterResume.get('sessionId')
+      || 'unknown';
+    console.warn('[SlimCD] Payment return detected but checkout session could not be restored.', { sessionId });
+    window.alert(
+      `Your card payment was received by SlimCD, but the order could not be completed automatically. `
+      + `Please contact support with SlimCD session ID: ${sessionId}. Do not pay again.`,
+    );
   }
 
   events.on('order/placed', () => {
