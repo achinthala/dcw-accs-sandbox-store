@@ -1,4 +1,26 @@
+import { getConfigValue } from '@dropins/tools/lib/aem/configs.js';
 import { STOREFRONT_BY_CODE } from './constants.js';
+
+function buildRuntimeActionUrl(actionName) {
+  const base = getConfigValue('slimcd-runtime-base-url');
+  if (!base) {
+    return '';
+  }
+  return `${String(base).replace(/\/$/, '')}/${actionName}`;
+}
+
+function normalizeCreateSessionUrl(url) {
+  if (!url || typeof url !== 'string') {
+    return '';
+  }
+  if (url.includes('validate-payment')) {
+    return url.replace('validate-payment', 'create-payment-session');
+  }
+  if (url.includes('check-payment-session')) {
+    return url.replace('check-payment-session', 'create-payment-session');
+  }
+  return url;
+}
 
 function readCustomConfig(oopeConfig) {
   const map = {};
@@ -22,14 +44,23 @@ export function resolveSlimCdMethodConfig(paymentMethod) {
 
   const custom = readCustomConfig(oope);
   const code = paymentMethod?.code || '';
-  const createSessionUrl = custom.create_session_url
+  let createSessionUrl = normalizeCreateSessionUrl(
+    custom.create_session_url
     || custom.createSessionUrl
     || oope?.backend_integration_url
     || oope?.backendIntegrationUrl
-    || '';
-  const checkSessionUrl = custom.check_session_url
+    || '',
+  );
+  let checkSessionUrl = custom.check_session_url
     || custom.checkSessionUrl
     || deriveSiblingActionUrl(createSessionUrl, 'check-payment-session');
+
+  if (!createSessionUrl) {
+    createSessionUrl = buildRuntimeActionUrl('create-payment-session');
+  }
+  if (!checkSessionUrl) {
+    checkSessionUrl = buildRuntimeActionUrl('check-payment-session');
+  }
 
   return {
     code,
