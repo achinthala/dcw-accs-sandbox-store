@@ -189,7 +189,19 @@ export default async function decorate(block) {
 
   const returnParamsAfterResume = new URLSearchParams(window.location.search);
   if (isSlimCdCheckoutReturn(returnParamsAfterResume)) {
-    console.warn('[SlimCD] Payment return detected but order completion did not finish.');
+    const sessionId = returnParamsAfterResume.get('sessionid')
+      || returnParamsAfterResume.get('sessionId')
+      || '';
+    block.innerHTML = `
+      <div class="slimcd-checkout-resume-error">
+        <h2>Payment received — order not completed</h2>
+        <p>Your card was charged by SlimCD, but Magento could not place the order automatically.</p>
+        <p>Please contact support with session ID: <strong>${sessionId}</strong></p>
+        <p>Do not pay again.</p>
+      </div>
+    `;
+    console.warn('[SlimCD] Payment return detected but order completion did not finish.', { sessionId });
+    return;
   }
 
   events.on('order/placed', () => {

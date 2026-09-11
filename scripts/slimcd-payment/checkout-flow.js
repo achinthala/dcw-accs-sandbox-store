@@ -4,7 +4,11 @@ import {
   initializeCart,
 } from '@dropins/storefront-cart/api.js';
 import { events } from '@dropins/tools/event-bus.js';
-import { SLIMCD_PAYMENT_CODES, RETURN_QUERY_FLAG } from './constants.js';
+import {
+  SLIMCD_PAYMENT_CODES,
+  RETURN_QUERY_FLAG,
+  STOREFRONT_BY_CODE,
+} from './constants.js';
 import { createPaymentSession, checkPaymentSession } from './api.js';
 import {
   resolveSlimCdMethodConfig,
@@ -40,7 +44,7 @@ function formatAmount(value) {
   return amount.toFixed(2);
 }
 
-function buildReturnUrl({ cartId, paymentCode, sessionId }) {
+function buildReturnUrl({ cartId, paymentCode, sessionId, storefront }) {
   const url = new URL(window.location.href);
   url.searchParams.set(RETURN_QUERY_FLAG, '1');
   if (cartId) {
@@ -48,6 +52,9 @@ function buildReturnUrl({ cartId, paymentCode, sessionId }) {
   }
   if (paymentCode) {
     url.searchParams.set('slimcd_pay', paymentCode);
+  }
+  if (storefront) {
+    url.searchParams.set('slimcd_store', storefront);
   }
   if (sessionId) {
     url.searchParams.set('slimcd_sid', sessionId);
@@ -361,7 +368,7 @@ export async function startSlimCdHostedPayment({
     amount,
     orderRef,
     currency,
-    returnUrl: buildReturnUrl({ cartId, paymentCode }),
+    returnUrl: buildReturnUrl({ cartId, paymentCode, storefront: config.storefront }),
     cartId,
     paymentCode,
   });
@@ -387,6 +394,14 @@ export async function startSlimCdHostedPayment({
   window.location.assign(hostedPageUrl);
 }
 
+function resolveStorefrontForReturn(params, cart, localPending, verified) {
+  return verified?.storefront
+    || localPending?.storefront
+    || params.get('slimcd_store')
+    || STOREFRONT_BY_CODE[resolveSlimCdPaymentCodeFromCart(cart, params)]
+    || 'USMI';
+}
+
 function buildPendingFromResolution({
   verified,
   localPending,
@@ -395,41 +410,71 @@ function buildPendingFromResolution({
   graphqlEndpoint,
   graphqlHeaders,
   cart,
+  params,
 }) {
-  if (verified?.cartId && verified?.paymentCode) {
+  const paymentCode = verified?.paymentCode
+    || localPending?.paymentCode
+    || resolveSlimCdPaymentCodeFromCart(cart || {}, params);
+  const cartId = verified?.cartId || localPending?.cartId || cart?.id;
+  const storefront = resolveStorefrontForReturn(params, cart, localPending, verified);
+
+  if (cartId && verified?.gateid) {
     return {
-      cartId: verified.cartId,
-      paymentCode: verified.paymentCode,
+      cartId,
+      paymentCode,
       sessionId: verified.sessionId || sessionId,
-      storefront: verified.storefront,
-      orderRef: verified.orderRef || String(verified.cartId).slice(0, 20),
-      amount: verified.amount,
+      storefront,
+      orderRef: verified?.orderRef || localPending?.orderRef || String(cartId).slice(0, 20),
+      amount: verified?.amount || localPending?.amount,
       checkSessionUrl,
       graphqlEndpoint,
       graphqlHeaders,
     };
   }
 
-  if (localPending) {
+  if (localPending?.cartId) {
     return localPending;
   }
 
-  if (verified?.storefront && cart?.id) {
-    return reconstructPendingSession(
-      new URLSearchParams(window.location.search),
-      cart,
-      { graphqlEndpoint, graphqlHeaders },
-      {
-        cartId: cart.id,
-        paymentCode: resolveSlimCdPaymentCodeFromCart(cart, new URLSearchParams(window.location.search)),
-        storefront: verified.storefront,
-        amount: verified.amount,
-        orderRef: String(cart.id).slice(0, 20),
-      },
-    );
+  return reconstructPendingSession(
+    params,
+    cart || { id: cartId },
+    { graphqlEndpoint, graphqlHeaders },
+    {
+      cartId,
+      paymentCode,
+      storefront,
+      amount: verified?.amount || localPending?.amount,
+      orderRef: String(cartId || '').slice(0, 20),
+    },
+  );
+}
+
+function waitForOrderPlaced(timeoutMs = 10000) {
+  const existing = events.lastPayload('order/placed');
+  if (existing) {
+    return Promise.resolve(existing);
   }
 
-  return null;
+  return new Promise((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        resolve(events.lastPayload('order/placed') || null);
+      }
+    }, timeoutMs);
+
+    const subscription = events.on('order/placed', (orderData) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      subscription?.off?.();
+      resolve(orderData);
+    });
+  });
 }
 
 /**
@@ -468,11 +513,13 @@ export async function completeSlimCdHostedPayment({
     return false;
   }
 
+  const storefront = resolveStorefrontForReturn(params, cart, localPending, null);
+
   try {
     const verified = await checkPaymentSession({
       checkSessionUrl,
       sessionId,
-      storefront: localPending?.storefront,
+      storefront,
     });
 
     if (!verified.approved || !verified.gateid) {
@@ -487,6 +534,7 @@ export async function completeSlimCdHostedPayment({
       graphqlEndpoint,
       graphqlHeaders,
       cart,
+      params,
     });
 
     if (!pending?.cartId) {
@@ -517,7 +565,10 @@ export async function completeSlimCdHostedPayment({
       headers: pending.graphqlHeaders || graphqlHeaders,
     });
 
-    const orderData = await placeOrder(pending.cartId);
+    let orderData = await placeOrder(pending.cartId);
+    if (!orderData) {
+      orderData = await waitForOrderPlaced();
+    }
     clearCheckoutSession(pending.sessionId || sessionId);
 
     const cleanUrl = new URL(window.location.href);
@@ -527,13 +578,18 @@ export async function completeSlimCdHostedPayment({
     cleanUrl.searchParams.delete('slimcd_sid');
     cleanUrl.searchParams.delete('sessionid');
     cleanUrl.searchParams.delete('sessionId');
+    cleanUrl.searchParams.delete('slimcd_store');
     window.history.replaceState({}, document.title, cleanUrl.toString());
 
-    if (onSuccess && orderData) {
-      await onSuccess(orderData);
+    if (onSuccess) {
+      if (orderData) {
+        await onSuccess(orderData);
+      } else {
+        throw new Error('Order placement did not return confirmation data');
+      }
     }
 
-    return orderData || true;
+    return orderData;
   } catch (error) {
     console.error('[SlimCD] Hosted return failed', { sessionId, error });
     if (onError) {
