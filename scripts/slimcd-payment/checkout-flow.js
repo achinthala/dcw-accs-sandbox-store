@@ -159,7 +159,7 @@ function enrichPendingSession(pending, { graphqlEndpoint, graphqlHeaders }) {
 
 function reconstructPendingSession(params, cart, ctx, storedPartial = null) {
   const sessionId = normalizeSessionId(resolveSlimCdReturnSessionId(params));
-  const cartId = storedPartial?.cartId || cart?.id;
+  const cartId = storedPartial?.cartId || cart?.id || params.get('slimcd_cart');
   if (!sessionId || !cartId) {
     return null;
   }
@@ -232,36 +232,57 @@ function resolvePendingCheckoutSession({ cart, graphqlEndpoint, graphqlHeaders }
   return pending;
 }
 
-async function waitForCartData(timeoutMs = 15000) {
+function matchesCartHint(cart, cartIdHint) {
+  if (!cart?.id) {
+    return false;
+  }
+  if (!cartIdHint) {
+    return true;
+  }
+  return cart.id === cartIdHint;
+}
+
+async function waitForCartData(timeoutMs = 15000, cartIdHint = null) {
   const stored = resolveStoredCartReference();
-  if (stored?.id && stored?.items?.length) {
+  if (matchesCartHint(stored, cartIdHint) && (stored?.items?.length || cartIdHint)) {
     return stored;
   }
 
   try {
     const initialized = await initializeCart();
-    if (initialized?.id) {
+    if (matchesCartHint(initialized, cartIdHint)) {
       return initialized;
     }
   } catch (error) {
     console.warn('[SlimCD] initializeCart during return failed', error);
   }
 
-  try {
-    const fetched = await getCartData();
-    if (fetched?.id) {
-      return fetched;
+  if (!cartIdHint) {
+    try {
+      const fetched = await getCartData();
+      if (fetched?.id) {
+        return fetched;
+      }
+    } catch (error) {
+      console.warn('[SlimCD] getCartData during return failed', error);
     }
-  } catch (error) {
-    console.warn('[SlimCD] getCartData during return failed', error);
   }
 
-  if (stored?.id) {
+  if (matchesCartHint(stored, cartIdHint)) {
     return stored;
+  }
+
+  if (cartIdHint) {
+    return { id: cartIdHint };
   }
 
   return new Promise((resolve) => {
     let settled = false;
+    const subscriptions = [];
+
+    const cleanup = () => {
+      subscriptions.forEach((subscription) => subscription?.off?.());
+    };
 
     const settle = (cart) => {
       if (settled) {
@@ -269,29 +290,36 @@ async function waitForCartData(timeoutMs = 15000) {
       }
       settled = true;
       clearTimeout(timer);
-      events.off('cart/data', onCartData);
-      events.off('cart/initialized', onCartData);
-      events.off('checkout/initialized', onCheckout);
-      resolve(cart?.id ? cart : getCartDataFromCache());
+      cleanup();
+      const resolved = cart?.id ? cart : getCartDataFromCache();
+      if (matchesCartHint(resolved, cartIdHint)) {
+        resolve(resolved);
+        return;
+      }
+      if (cartIdHint) {
+        resolve({ id: cartIdHint });
+        return;
+      }
+      resolve(resolved?.id ? resolved : null);
     };
 
     const onCartData = (data) => {
-      if (data?.id) {
+      if (matchesCartHint(data, cartIdHint)) {
         settle(data);
       }
     };
 
     const onCheckout = (data) => {
-      if (data?.id) {
+      if (matchesCartHint(data, cartIdHint)) {
         settle(data);
       }
     };
 
     const timer = setTimeout(() => settle(getCartDataFromCache()), timeoutMs);
 
-    events.on('cart/data', onCartData);
-    events.on('cart/initialized', onCartData, { eager: true });
-    events.on('checkout/initialized', onCheckout, { eager: true });
+    subscriptions.push(events.on('cart/data', onCartData));
+    subscriptions.push(events.on('cart/initialized', onCartData, { eager: true }));
+    subscriptions.push(events.on('checkout/initialized', onCheckout, { eager: true }));
   });
 }
 
@@ -506,9 +534,9 @@ export async function completeSlimCdHostedPayment({
     return false;
   }
 
-  const cart = await waitForCartData();
+  const storedCartRef = resolveStoredCartReference();
   const localPending = resolvePendingCheckoutSession({
-    cart,
+    cart: storedCartRef,
     graphqlEndpoint,
     graphqlHeaders,
   });
@@ -520,7 +548,7 @@ export async function completeSlimCdHostedPayment({
     return false;
   }
 
-  const storefront = resolveStorefrontForReturn(params, cart, localPending, null);
+  const storefront = resolveStorefrontForReturn(params, storedCartRef, localPending, null);
 
   try {
     const verified = await checkPaymentSession({
@@ -528,6 +556,11 @@ export async function completeSlimCdHostedPayment({
       sessionId,
       storefront,
     });
+
+    const cartIdHint = verified?.cartId
+      || localPending?.cartId
+      || params.get('slimcd_cart');
+    const cart = await waitForCartData(15000, cartIdHint);
 
     if (!verified.approved || !verified.gateid) {
       throw new Error(
