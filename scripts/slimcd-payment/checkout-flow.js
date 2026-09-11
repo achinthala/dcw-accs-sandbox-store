@@ -44,6 +44,12 @@ function formatAmount(value) {
   return amount.toFixed(2);
 }
 
+function buildUniqueOrderRef(cartId) {
+  const base = String(cartId || 'CART').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8);
+  const suffix = `${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
+  return `${base}${suffix}`.slice(0, 20);
+}
+
 function buildReturnUrl({ cartId, paymentCode, sessionId, storefront }) {
   const url = new URL(window.location.href);
   url.searchParams.set(RETURN_QUERY_FLAG, '1');
@@ -316,6 +322,7 @@ function buildAdditionalData({
     { key: 'gateid', value: gateid },
     { key: 'storefront', value: storefront },
     { key: 'orderRef', value: orderRef },
+    { key: 'clientTransRef', value: orderRef },
     { key: 'amount', value: amount },
     { key: 'status', value: 'DONE' },
   ];
@@ -360,7 +367,7 @@ export async function startSlimCdHostedPayment({
     || cachedCart?.prices?.subtotalIncludingTax?.currency
     || cart.currency
     || config.currency;
-  const orderRef = String(cartId).slice(0, 20);
+  const orderRef = buildUniqueOrderRef(cartId);
 
   const session = await createPaymentSession({
     createSessionUrl: config.createSessionUrl,
@@ -378,7 +385,7 @@ export async function startSlimCdHostedPayment({
     paymentCode,
     sessionId: session.sessionId,
     storefront: config.storefront,
-    orderRef,
+    orderRef: session.orderRef || orderRef,
     amount,
     checkSessionUrl: config.checkSessionUrl,
     graphqlEndpoint,
