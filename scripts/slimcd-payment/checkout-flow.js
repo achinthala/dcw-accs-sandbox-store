@@ -523,7 +523,10 @@ export async function completeSlimCdHostedPayment({
     });
 
     if (!verified.approved || !verified.gateid) {
-      throw new Error('SlimCD payment was not approved');
+      throw new Error(
+        verified?.error
+          || 'SlimCD payment was not approved. Confirm SlimCD PostBack URL points to hosted-payment-postback and redeploy the App Builder app.',
+      );
     }
 
     const pending = buildPendingFromResolution({
