@@ -1,8 +1,12 @@
 import { getConfigValue } from '@dropins/tools/lib/aem/configs.js';
-import { STOREFRONT_BY_CODE } from './constants.js';
+import { SLIMCD_RUNTIME_BASE_URL, STOREFRONT_BY_CODE } from './constants.js';
+
+function resolveRuntimeBaseUrl() {
+  return getConfigValue('slimcd-runtime-base-url') || SLIMCD_RUNTIME_BASE_URL;
+}
 
 function buildRuntimeActionUrl(actionName) {
-  const base = getConfigValue('slimcd-runtime-base-url');
+  const base = resolveRuntimeBaseUrl();
   if (!base) {
     return '';
   }
@@ -67,6 +71,7 @@ export function resolveSlimCdMethodConfig(paymentMethod) {
     storefront: custom.storefront || STOREFRONT_BY_CODE[code] || '',
     createSessionUrl,
     checkSessionUrl,
+    runtimeBaseUrl: resolveRuntimeBaseUrl(),
     currency: paymentMethod?.currency || null,
   };
 }

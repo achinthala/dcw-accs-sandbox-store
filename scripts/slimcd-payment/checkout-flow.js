@@ -66,9 +66,13 @@ export async function startSlimCdHostedPayment({
 
   const config = resolveSlimCdMethodConfig(method);
   if (!config.createSessionUrl || !config.checkSessionUrl) {
-    console.error('[SlimCD] OOPE payment method config:', method);
+    console.error('[SlimCD] Could not resolve action URLs', {
+      paymentCode,
+      method,
+      runtimeBaseUrl: config.runtimeBaseUrl,
+    });
     throw new Error(
-      'SlimCD action URLs are missing. Upgrade/reinstall the SlimCD app in Commerce Admin so OOPE custom_config includes create_session_url and check_session_url.',
+      'SlimCD action URLs are missing. Set slimcd-runtime-base-url in config.json, or upgrade/reinstall the SlimCD app in Commerce Admin (v0.0.4+) so OOPE custom_config includes create_session_url and check_session_url.',
     );
   }
 

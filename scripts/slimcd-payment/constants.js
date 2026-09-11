@@ -14,3 +14,7 @@ export const STOREFRONT_BY_CODE = {
 export const SESSION_STORAGE_KEY = 'slimcd_checkout_session';
 
 export const RETURN_QUERY_FLAG = 'slimcd_return';
+
+/** Fallback when config.json / OOPE custom_config URLs are unavailable (Stage workspace). */
+export const SLIMCD_RUNTIME_BASE_URL =
+  'https://1890365-slimcdpaymentgateway-stage.adobeioruntime.net/api/v1/web/slimcd-payment-gateway';
