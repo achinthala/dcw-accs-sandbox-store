@@ -44,13 +44,6 @@ function formatAmount(value) {
   return amount.toFixed(2);
 }
 
-/** Unique per attempt — cart id alone triggers SlimCD DUPLICATE_TRANSACTION_ALREADY_APPROVED. */
-function buildUniqueOrderRef(cartId) {
-  const base = String(cartId || 'CART').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8);
-  const suffix = `${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
-  return `${base}${suffix}`.slice(0, 20);
-}
-
 function buildReturnUrl({ cartId, paymentCode, sessionId, storefront }) {
   const url = new URL(window.location.href);
   url.searchParams.set(RETURN_QUERY_FLAG, '1');
@@ -181,7 +174,7 @@ function reconstructPendingSession(params, cart, ctx, storedPartial = null) {
     paymentCode,
     sessionId,
     storefront: storedPartial?.storefront || config.storefront,
-    orderRef: storedPartial?.orderRef || null,
+    orderRef: storedPartial?.orderRef || String(cartId).slice(0, 20),
     amount: amount || storedPartial?.amount || null,
     checkSessionUrl: config.checkSessionUrl,
   }, ctx);
@@ -323,7 +316,6 @@ function buildAdditionalData({
     { key: 'gateid', value: gateid },
     { key: 'storefront', value: storefront },
     { key: 'orderRef', value: orderRef },
-    { key: 'clientTransRef', value: orderRef },
     { key: 'amount', value: amount },
     { key: 'status', value: 'DONE' },
   ];
@@ -368,7 +360,7 @@ export async function startSlimCdHostedPayment({
     || cachedCart?.prices?.subtotalIncludingTax?.currency
     || cart.currency
     || config.currency;
-  const orderRef = buildUniqueOrderRef(cartId);
+  const orderRef = String(cartId).slice(0, 20);
 
   const session = await createPaymentSession({
     createSessionUrl: config.createSessionUrl,
@@ -386,7 +378,7 @@ export async function startSlimCdHostedPayment({
     paymentCode,
     sessionId: session.sessionId,
     storefront: config.storefront,
-    orderRef: session.orderRef || orderRef,
+    orderRef,
     amount,
     checkSessionUrl: config.checkSessionUrl,
     graphqlEndpoint,
@@ -432,7 +424,7 @@ function buildPendingFromResolution({
       paymentCode,
       sessionId: verified.sessionId || sessionId,
       storefront,
-      orderRef: verified?.orderRef || localPending?.orderRef,
+      orderRef: verified?.orderRef || localPending?.orderRef || String(cartId).slice(0, 20),
       amount: verified?.amount || localPending?.amount,
       checkSessionUrl,
       graphqlEndpoint,
@@ -453,7 +445,7 @@ function buildPendingFromResolution({
       paymentCode,
       storefront,
       amount: verified?.amount || localPending?.amount,
-      orderRef: localPending?.orderRef || verified?.orderRef || null,
+      orderRef: String(cartId || '').slice(0, 20),
     },
   );
 }
@@ -559,10 +551,6 @@ export async function completeSlimCdHostedPayment({
       throw new Error('Could not determine order amount for SlimCD payment completion');
     }
 
-    const orderRef = pending.orderRef
-      || verified?.orderRef
-      || normalizeSessionId(pending.sessionId || sessionId).slice(0, 20);
-
     await setSlimCdPaymentMethodOnCart({
       endpoint: pending.graphqlEndpoint || graphqlEndpoint,
       cartId: pending.cartId,
@@ -571,7 +559,7 @@ export async function completeSlimCdHostedPayment({
         sessionId: pending.sessionId || sessionId,
         gateid: verified.gateid,
         storefront: pending.storefront || verified.storefront,
-        orderRef,
+        orderRef: pending.orderRef,
         amount,
       }),
       headers: pending.graphqlHeaders || graphqlHeaders,
