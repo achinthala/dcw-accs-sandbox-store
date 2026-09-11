@@ -37,7 +37,7 @@ export const SLIMCD_CHECKOUT_GRAPHQL_OPERATIONS = [
 ];
 
 export const SET_SLIMCD_PAYMENT_MUTATION = `
-  mutation SetSlimCdPaymentMethod($cartId: String!, $code: String!, $additionalData: [KeyValueInput!]!) {
+  mutation SetSlimCdPaymentMethod($cartId: String!, $code: String!, $additionalData: [PaymentAttributeInput!]!) {
     setPaymentMethodOnCart(
       input: {
         cart_id: $cartId
