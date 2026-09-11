@@ -172,14 +172,15 @@ export default async function decorate(block) {
     await renderCheckoutSuccess(block, { orderData });
   };
 
+  let slimCdResumeError = null;
   const slimCdReturnCompleted = await resumeSlimCdCheckoutOnReturn({
     placeOrder: placeCommerceOrder,
     onSuccess: showCheckoutSuccess,
     graphqlEndpoint: getConfigValue('commerce-endpoint'),
     graphqlHeaders: getSlimCdGraphqlHeaders(),
     onError: (error) => {
-      console.error('[SlimCD]', error);
-      window.alert(error.message || 'SlimCD payment failed. Please try again.');
+      slimCdResumeError = error;
+      console.error('[SlimCD] Hosted return failed', error);
     },
   });
 
@@ -191,16 +192,24 @@ export default async function decorate(block) {
   if (isSlimCdCheckoutReturn(returnParamsAfterResume)) {
     const sessionId = returnParamsAfterResume.get('sessionid')
       || returnParamsAfterResume.get('sessionId')
+      || returnParamsAfterResume.get('slimcd_sid')
       || '';
+    const errorDetail = slimCdResumeError?.message
+      ? `<p class="slimcd-checkout-resume-error-detail"><strong>Details:</strong> ${slimCdResumeError.message}</p>`
+      : '';
     block.innerHTML = `
       <div class="slimcd-checkout-resume-error">
         <h2>Payment received — order not completed</h2>
         <p>Your card was charged by SlimCD, but Magento could not place the order automatically.</p>
+        ${errorDetail}
         <p>Please contact support with session ID: <strong>${sessionId}</strong></p>
         <p>Do not pay again.</p>
       </div>
     `;
-    console.warn('[SlimCD] Payment return detected but order completion did not finish.', { sessionId });
+    console.warn('[SlimCD] Payment return detected but order completion did not finish.', {
+      sessionId,
+      error: slimCdResumeError,
+    });
     return;
   }
 
