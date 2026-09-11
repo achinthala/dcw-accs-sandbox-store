@@ -30,8 +30,9 @@ export function getSlimCdGraphqlHeaders() {
 export async function resumeSlimCdCheckoutOnReturn({
   placeOrder,
   onError,
+  onSuccess,
 }) {
-  return completeSlimCdHostedPayment({ placeOrder, onError });
+  return completeSlimCdHostedPayment({ placeOrder, onError, onSuccess });
 }
 
 /**

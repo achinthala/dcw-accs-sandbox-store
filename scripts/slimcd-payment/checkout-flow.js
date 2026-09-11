@@ -26,10 +26,62 @@ function formatAmount(value) {
   return amount.toFixed(2);
 }
 
-function buildReturnUrl() {
+function buildReturnUrl({ cartId, paymentCode, sessionId }) {
   const url = new URL(window.location.href);
   url.searchParams.set(RETURN_QUERY_FLAG, '1');
+  if (cartId) {
+    url.searchParams.set('slimcd_cart', cartId);
+  }
+  if (paymentCode) {
+    url.searchParams.set('slimcd_pay', paymentCode);
+  }
+  if (sessionId) {
+    url.searchParams.set('slimcd_sid', sessionId);
+  }
   return url.toString();
+}
+
+function resolvePendingCheckoutSession() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get(RETURN_QUERY_FLAG) !== '1') {
+    return null;
+  }
+
+  const pending = loadCheckoutSession();
+  if (!pending) {
+    return null;
+  }
+
+  const cartId = params.get('slimcd_cart');
+  const paymentCode = params.get('slimcd_pay');
+  const sessionId = params.get('slimcd_sid');
+
+  if (cartId && pending.cartId && pending.cartId !== cartId) {
+    return null;
+  }
+  if (paymentCode && pending.paymentCode && pending.paymentCode !== paymentCode) {
+    return null;
+  }
+  if (sessionId && pending.sessionId && pending.sessionId !== sessionId) {
+    return null;
+  }
+
+  return pending;
+}
+
+function decorateHostedPageUrl(hostedPageUrl, { sessionId, cartId, paymentCode }) {
+  try {
+    const target = new URL(hostedPageUrl, window.location.origin);
+    const isSameOriginReturn = target.origin === window.location.origin
+      && target.searchParams.get(RETURN_QUERY_FLAG) === '1';
+
+    if (isSameOriginReturn) {
+      return buildReturnUrl({ cartId, paymentCode, sessionId });
+    }
+    return hostedPageUrl;
+  } catch (error) {
+    return hostedPageUrl;
+  }
 }
 
 function buildAdditionalData({
@@ -89,7 +141,6 @@ export async function startSlimCdHostedPayment({
     || cart.currency
     || config.currency;
   const orderRef = String(cartId).slice(0, 20);
-  const returnUrl = buildReturnUrl();
 
   const session = await createPaymentSession({
     createSessionUrl: config.createSessionUrl,
@@ -97,7 +148,7 @@ export async function startSlimCdHostedPayment({
     amount,
     orderRef,
     currency,
-    returnUrl,
+    returnUrl: buildReturnUrl({ cartId, paymentCode }),
   });
 
   saveCheckoutSession({
@@ -112,7 +163,13 @@ export async function startSlimCdHostedPayment({
     graphqlHeaders,
   });
 
-  window.location.assign(session.hostedPageUrl);
+  const hostedPageUrl = decorateHostedPageUrl(session.hostedPageUrl, {
+    sessionId: session.sessionId,
+    cartId,
+    paymentCode,
+  });
+
+  window.location.assign(hostedPageUrl);
 }
 
 /**
@@ -121,13 +178,9 @@ export async function startSlimCdHostedPayment({
 export async function completeSlimCdHostedPayment({
   placeOrder,
   onError,
+  onSuccess,
 }) {
-  const params = new URLSearchParams(window.location.search);
-  if (params.get(RETURN_QUERY_FLAG) !== '1') {
-    return false;
-  }
-
-  const pending = loadCheckoutSession();
+  const pending = resolvePendingCheckoutSession();
   if (!pending) {
     return false;
   }
@@ -157,14 +210,21 @@ export async function completeSlimCdHostedPayment({
       headers: pending.graphqlHeaders,
     });
 
-    await placeOrder(pending.cartId);
+    const orderData = await placeOrder(pending.cartId);
     clearCheckoutSession();
 
     const cleanUrl = new URL(window.location.href);
     cleanUrl.searchParams.delete(RETURN_QUERY_FLAG);
+    cleanUrl.searchParams.delete('slimcd_cart');
+    cleanUrl.searchParams.delete('slimcd_pay');
+    cleanUrl.searchParams.delete('slimcd_sid');
     window.history.replaceState({}, document.title, cleanUrl.toString());
 
-    return true;
+    if (onSuccess && orderData) {
+      await onSuccess(orderData);
+    }
+
+    return orderData || true;
   } catch (error) {
     clearCheckoutSession();
     if (onError) {

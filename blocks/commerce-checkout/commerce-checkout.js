@@ -80,8 +80,9 @@ preloadCheckoutSuccess();
 
 function redirectToCartIfEmpty(cartData) {
   const isOrderPlaced = events.lastPayload('order/placed') !== undefined;
+  const isSlimCdReturn = new URLSearchParams(window.location.search).get('slimcd_return') === '1';
 
-  if (!isOrderPlaced && (cartData === null || cartData?.items?.length === 0)) {
+  if (!isOrderPlaced && !isSlimCdReturn && (cartData === null || cartData?.items?.length === 0)) {
     window.location.href = rootLink('/cart');
   }
 }
@@ -136,11 +137,47 @@ export default async function decorate(block) {
   const placeCommerceOrder = async (cartId) => {
     const shouldPlacePurchaseOrder = isB2BEnabled && b2bIsPoEnabled && b2bPoApi;
     if (shouldPlacePurchaseOrder) {
-      await b2bPoApi.placePurchaseOrder(cartId);
-    } else {
-      await orderApi.placeOrder(cartId);
+      return b2bPoApi.placePurchaseOrder(cartId);
     }
+    return orderApi.placeOrder(cartId);
   };
+
+  let checkoutSuccessRendered = false;
+
+  const showCheckoutSuccess = async (orderData) => {
+    if (!orderData || checkoutSuccessRendered) {
+      return;
+    }
+    checkoutSuccessRendered = true;
+
+    sessionStorage.removeItem(SHIPPING_ADDRESS_DATA_KEY);
+    sessionStorage.removeItem(BILLING_ADDRESS_DATA_KEY);
+
+    setMetaTags('Order Confirmation');
+    document.title = 'Order Confirmation';
+
+    const url = buildOrderDetailsUrl(orderData);
+    window.history.pushState({}, '', url);
+
+    await renderCheckoutSuccess(block, { orderData });
+  };
+
+  const slimCdReturnCompleted = await resumeSlimCdCheckoutOnReturn({
+    placeOrder: placeCommerceOrder,
+    onSuccess: showCheckoutSuccess,
+    onError: (error) => {
+      console.error('[SlimCD]', error);
+      window.alert(error.message || 'SlimCD payment failed. Please try again.');
+    },
+  });
+
+  if (slimCdReturnCompleted) {
+    return;
+  }
+
+  if (new URLSearchParams(window.location.search).get('slimcd_return') === '1') {
+    console.warn('[SlimCD] Payment return detected but checkout session could not be restored. Do not place the order again — contact support if you were charged.');
+  }
 
   events.on('order/placed', () => {
     setMetaTags('Order Confirmation');
@@ -365,15 +402,7 @@ export default async function decorate(block) {
   }
 
   async function handleOrderPlaced(orderData) {
-    // Clear address form data
-    sessionStorage.removeItem(SHIPPING_ADDRESS_DATA_KEY);
-    sessionStorage.removeItem(BILLING_ADDRESS_DATA_KEY);
-
-    const url = buildOrderDetailsUrl(orderData);
-
-    window.history.pushState({}, '', url);
-
-    await renderCheckoutSuccess(block, { orderData });
+    await showCheckoutSuccess(orderData);
   }
 
   async function handlePurchaseOrderPlaced(poData) {
@@ -399,11 +428,4 @@ export default async function decorate(block) {
   events.on('cart/data', redirectToCartIfEmpty);
   events.on('purchase-order/placed', handlePurchaseOrderPlaced);
 
-  await resumeSlimCdCheckoutOnReturn({
-    placeOrder: placeCommerceOrder,
-    onError: (error) => {
-      console.error('[SlimCD]', error);
-      window.alert(error.message || 'SlimCD payment failed. Please try again.');
-    },
-  });
 }
