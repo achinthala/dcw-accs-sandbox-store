@@ -41,9 +41,17 @@ function buildReturnUrl({ cartId, paymentCode, sessionId }) {
   return url.toString();
 }
 
+function resolveSlimCdReturnSessionId(params) {
+  return params.get('sessionid') || params.get('sessionId') || params.get('slimcd_sid');
+}
+
+export function isSlimCdCheckoutReturn(params) {
+  return params.get(RETURN_QUERY_FLAG) === '1' || Boolean(resolveSlimCdReturnSessionId(params));
+}
+
 function resolvePendingCheckoutSession() {
   const params = new URLSearchParams(window.location.search);
-  if (params.get(RETURN_QUERY_FLAG) !== '1') {
+  if (!isSlimCdCheckoutReturn(params)) {
     return null;
   }
 
@@ -54,7 +62,7 @@ function resolvePendingCheckoutSession() {
 
   const cartId = params.get('slimcd_cart');
   const paymentCode = params.get('slimcd_pay');
-  const sessionId = params.get('slimcd_sid');
+  const sessionId = resolveSlimCdReturnSessionId(params);
 
   if (cartId && pending.cartId && pending.cartId !== cartId) {
     return null;
@@ -218,6 +226,8 @@ export async function completeSlimCdHostedPayment({
     cleanUrl.searchParams.delete('slimcd_cart');
     cleanUrl.searchParams.delete('slimcd_pay');
     cleanUrl.searchParams.delete('slimcd_sid');
+    cleanUrl.searchParams.delete('sessionid');
+    cleanUrl.searchParams.delete('sessionId');
     window.history.replaceState({}, document.title, cleanUrl.toString());
 
     if (onSuccess && orderData) {

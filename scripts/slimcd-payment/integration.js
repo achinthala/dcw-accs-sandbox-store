@@ -6,10 +6,11 @@ import { getHeaders } from '@dropins/tools/lib/aem/configs.js';
 import {
   completeSlimCdHostedPayment,
   handleSlimCdPlaceOrder,
+  isSlimCdCheckoutReturn,
   isSlimCdPaymentMethod,
 } from './checkout-flow.js';
 
-export { isSlimCdPaymentMethod };
+export { isSlimCdPaymentMethod, isSlimCdCheckoutReturn };
 
 /** GraphQL headers for direct SlimCD cart mutations (matches drop-in auth). */
 export function getSlimCdGraphqlHeaders() {

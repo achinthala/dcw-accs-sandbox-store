@@ -25,6 +25,7 @@ import { buildOrderDetailsUrl, displayOverlaySpinner, removeOverlaySpinner } fro
 import {
   getSlimCdGraphqlHeaders,
   handleSlimCdPlaceOrder,
+  isSlimCdCheckoutReturn,
   isSlimCdPaymentMethod,
   resumeSlimCdCheckoutOnReturn,
 } from '../../scripts/slimcd-payment/integration.js';
@@ -80,7 +81,10 @@ preloadCheckoutSuccess();
 
 function redirectToCartIfEmpty(cartData) {
   const isOrderPlaced = events.lastPayload('order/placed') !== undefined;
-  const isSlimCdReturn = new URLSearchParams(window.location.search).get('slimcd_return') === '1';
+  const returnParams = new URLSearchParams(window.location.search);
+  const isSlimCdReturn = returnParams.get('slimcd_return') === '1'
+    || returnParams.has('sessionid')
+    || returnParams.has('sessionId');
 
   if (!isOrderPlaced && !isSlimCdReturn && (cartData === null || cartData?.items?.length === 0)) {
     window.location.href = rootLink('/cart');
@@ -175,7 +179,8 @@ export default async function decorate(block) {
     return;
   }
 
-  if (new URLSearchParams(window.location.search).get('slimcd_return') === '1') {
+  const returnParamsAfterResume = new URLSearchParams(window.location.search);
+  if (isSlimCdCheckoutReturn(returnParamsAfterResume)) {
     console.warn('[SlimCD] Payment return detected but checkout session could not be restored. Do not place the order again — contact support if you were charged.');
   }
 
