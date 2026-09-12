@@ -8,9 +8,10 @@ import {
   handleSlimCdPlaceOrder,
   isSlimCdCheckoutReturn,
   isSlimCdPaymentMethod,
+  waitForDropinsReady,
 } from './checkout-flow.js';
 
-export { isSlimCdPaymentMethod, isSlimCdCheckoutReturn };
+export { isSlimCdPaymentMethod, isSlimCdCheckoutReturn, waitForDropinsReady };
 
 /** GraphQL headers for direct SlimCD cart mutations (matches drop-in auth). */
 export function getSlimCdGraphqlHeaders() {

@@ -28,6 +28,7 @@ import {
   isSlimCdCheckoutReturn,
   isSlimCdPaymentMethod,
   resumeSlimCdCheckoutOnReturn,
+  waitForDropinsReady,
 } from '../../scripts/slimcd-payment/integration.js';
 import { resolveSlimCdPaymentCode } from '../../scripts/slimcd-payment/checkout-flow.js';
 
@@ -120,6 +121,7 @@ export default async function decorate(block) {
   const isReturningFromSlimCd = isSlimCdCheckoutReturn(initialReturnParams);
   if (isReturningFromSlimCd) {
     block.innerHTML = '<p class="slimcd-checkout-resume">Completing your order…</p>';
+    await waitForDropinsReady(25000);
   }
 
   const cartData = events.lastPayload('cart/initialized');

@@ -344,6 +344,7 @@ function buildAdditionalData({
   storefront,
   orderRef,
   amount,
+  cartId,
 }) {
   return [
     { key: 'sessionId', value: sessionId },
@@ -352,8 +353,69 @@ function buildAdditionalData({
     { key: 'orderRef', value: orderRef },
     { key: 'clientTransRef', value: orderRef },
     { key: 'amount', value: amount },
+    { key: 'grand_total', value: amount },
+    { key: 'cartId', value: cartId || '' },
     { key: 'status', value: 'DONE' },
   ];
+}
+
+function extractPlaceOrderError(error) {
+  if (!error) {
+    return 'Order placement failed';
+  }
+  if (typeof error === 'string') {
+    return error;
+  }
+  if (error.message && !/server error stopped your order/i.test(error.message)) {
+    return error.message;
+  }
+  if (Array.isArray(error) && error[0]?.message) {
+    return error.map((entry) => entry.message).join('; ');
+  }
+  return error.message || 'Order placement failed';
+}
+
+export async function waitForDropinsReady(timeoutMs = 25000) {
+  const existing = events.lastPayload('checkout/initialized')
+    || events.lastPayload('cart/initialized');
+  if (existing?.id) {
+    return existing;
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const subscriptions = [];
+
+    const cleanup = () => {
+      subscriptions.forEach((subscription) => subscription?.off?.());
+    };
+
+    const settle = (data) => {
+      if (settled || !data?.id) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      cleanup();
+      resolve(data);
+    };
+
+    const timer = setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      resolve(
+        events.lastPayload('checkout/initialized')
+          || events.lastPayload('cart/initialized')
+          || null,
+      );
+    }, timeoutMs);
+
+    subscriptions.push(events.on('checkout/initialized', settle, { eager: true }));
+    subscriptions.push(events.on('cart/initialized', settle, { eager: true }));
+  });
 }
 
 /**
@@ -604,11 +666,19 @@ export async function completeSlimCdHostedPayment({
         storefront: pending.storefront || verified.storefront,
         orderRef: pending.orderRef,
         amount,
+        cartId: pending.cartId,
       }),
       headers: pending.graphqlHeaders || graphqlHeaders,
     });
 
-    let orderData = await placeOrder(pending.cartId);
+    await waitForDropinsReady(25000);
+
+    let orderData;
+    try {
+      orderData = await placeOrder(pending.cartId);
+    } catch (placeOrderError) {
+      throw new Error(extractPlaceOrderError(placeOrderError));
+    }
     if (!orderData) {
       orderData = await waitForOrderPlaced();
     }
