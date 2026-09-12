@@ -20,8 +20,11 @@ import {
   loadCheckoutSession,
   loadCheckoutSessionFromCookie,
   clearCheckoutSession,
+  saveCapturedPayment,
+  loadCapturedPayment,
+  clearCapturedPayment,
 } from './storage.js';
-import { setSlimCdPaymentMethodOnCart } from './graphql.js';
+import { setSlimCdPaymentMethodOnCart, placeOrderWithGraphql } from './graphql.js';
 
 export function isSlimCdPaymentMethod(code) {
   return SLIMCD_PAYMENT_CODES.includes(code);
@@ -656,32 +659,44 @@ export async function completeSlimCdHostedPayment({
       throw new Error('Could not determine order amount for SlimCD payment completion');
     }
 
+    const paymentPayload = {
+      sessionId: pending.sessionId || sessionId,
+      gateid: verified.gateid,
+      storefront: pending.storefront || verified.storefront,
+      orderRef: pending.orderRef,
+      amount,
+      cartId: pending.cartId,
+      paymentCode: pending.paymentCode,
+    };
+
     await setSlimCdPaymentMethodOnCart({
       endpoint: pending.graphqlEndpoint || graphqlEndpoint,
       cartId: pending.cartId,
       code: pending.paymentCode,
-      additionalData: buildAdditionalData({
-        sessionId: pending.sessionId || sessionId,
-        gateid: verified.gateid,
-        storefront: pending.storefront || verified.storefront,
-        orderRef: pending.orderRef,
-        amount,
-        cartId: pending.cartId,
-      }),
+      additionalData: buildAdditionalData(paymentPayload),
       headers: pending.graphqlHeaders || graphqlHeaders,
     });
 
+    saveCapturedPayment(paymentPayload);
+
     await waitForDropinsReady(25000);
 
+    const endpoint = pending.graphqlEndpoint || graphqlEndpoint;
+    const headers = pending.graphqlHeaders || graphqlHeaders;
     let orderData;
     try {
-      orderData = await placeOrder(pending.cartId);
+      orderData = await placeOrderWithGraphql({
+        endpoint,
+        cartId: pending.cartId,
+        headers,
+      });
     } catch (placeOrderError) {
       throw new Error(extractPlaceOrderError(placeOrderError));
     }
     if (!orderData) {
       orderData = await waitForOrderPlaced();
     }
+    clearCapturedPayment();
     clearCheckoutSession(pending.sessionId || sessionId);
 
     const cleanUrl = new URL(window.location.href);
@@ -734,14 +749,42 @@ export async function handleSlimCdPlaceOrder({
   placeOrder,
 }) {
   const paymentCode = resolveSlimCdPaymentCode(cart, code);
+  const resolvedCartId = cart?.id || cartId;
 
   if (!isSlimCdPaymentMethod(paymentCode)) {
-    await placeOrder(cartId);
+    await placeOrder(resolvedCartId);
     return;
   }
 
+  const captured = loadCapturedPayment(resolvedCartId);
+  if (captured?.gateid) {
+    await setSlimCdPaymentMethodOnCart({
+      endpoint: graphqlEndpoint,
+      cartId: resolvedCartId,
+      code: captured.paymentCode || paymentCode,
+      additionalData: buildAdditionalData({
+        sessionId: captured.sessionId,
+        gateid: captured.gateid,
+        storefront: captured.storefront,
+        orderRef: captured.orderRef,
+        amount: captured.amount,
+        cartId: resolvedCartId,
+      }),
+      headers: graphqlHeaders,
+    });
+
+    const orderData = await placeOrderWithGraphql({
+      endpoint: graphqlEndpoint,
+      cartId: resolvedCartId,
+      headers: graphqlHeaders,
+    });
+    clearCapturedPayment();
+    clearCheckoutSession(captured.sessionId);
+    return orderData;
+  }
+
   await startSlimCdHostedPayment({
-    cart: { ...cart, id: cart?.id || cartId },
+    cart: { ...cart, id: resolvedCartId },
     paymentCode,
     graphqlEndpoint,
     graphqlHeaders,

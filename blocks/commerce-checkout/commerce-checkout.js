@@ -196,14 +196,22 @@ export default async function decorate(block) {
       || '';
     block.innerHTML = `
       <div class="slimcd-checkout-resume-error">
-        <h2>Payment received — order not completed</h2>
-        <p>Your card was charged by SlimCD, but Magento could not place the order automatically.</p>
-        <p>Please contact support with session ID: <strong>${sessionId}</strong></p>
-        <p>Do not pay again.</p>
+        <h2>Payment confirmed — finish your order</h2>
+        <p>Your card was already charged by SlimCD. Complete checkout below and click <strong>Place Order</strong>.</p>
+        <p><strong>Do not pay again.</strong> Session: ${sessionId}</p>
       </div>
     `;
-    console.warn('[SlimCD] Payment return detected but order completion did not finish.', { sessionId });
-    return;
+    console.warn('[SlimCD] Payment return detected but auto place order did not finish.', { sessionId });
+
+    const cleanUrl = new URL(window.location.href);
+    cleanUrl.searchParams.delete('slimcd_return');
+    cleanUrl.searchParams.delete('slimcd_cart');
+    cleanUrl.searchParams.delete('slimcd_pay');
+    cleanUrl.searchParams.delete('slimcd_sid');
+    cleanUrl.searchParams.delete('sessionid');
+    cleanUrl.searchParams.delete('sessionId');
+    cleanUrl.searchParams.delete('slimcd_store');
+    window.history.replaceState({}, document.title, cleanUrl.toString());
   }
 
   events.on('order/placed', () => {
@@ -271,7 +279,7 @@ export default async function decorate(block) {
           throw new Error('Checkout cart is not loaded yet. Please try again.');
         }
 
-        await handleSlimCdPlaceOrder({
+        const slimCdOrder = await handleSlimCdPlaceOrder({
           cartId,
           code: paymentCode,
           cart: latestCheckoutCart,
@@ -279,6 +287,9 @@ export default async function decorate(block) {
           graphqlHeaders: getSlimCdGraphqlHeaders(),
           placeOrder: placeCommerceOrder,
         });
+        if (slimCdOrder) {
+          await showCheckoutSuccess(slimCdOrder);
+        }
         return;
       }
 

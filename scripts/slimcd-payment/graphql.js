@@ -92,3 +92,55 @@ export async function setSlimCdPaymentMethodOnCart({
 
   return payload.data?.setPaymentMethodOnCart?.cart;
 }
+
+export const PLACE_ORDER_MUTATION = `
+  mutation PlaceSlimCdOrder($cartId: String!) {
+    placeOrder(input: { cart_id: $cartId }) {
+      orderV2 {
+        number
+        token
+        id
+        email
+      }
+      errors {
+        code
+        message
+      }
+    }
+  }
+`;
+
+/** Place order with the same GraphQL endpoint/headers used for SlimCD cart mutations. */
+export async function placeOrderWithGraphql({
+  endpoint,
+  cartId,
+  headers = {},
+}) {
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers,
+    },
+    body: JSON.stringify({
+      query: PLACE_ORDER_MUTATION,
+      variables: { cartId },
+    }),
+  });
+
+  const payload = await response.json();
+  if (payload.errors?.length) {
+    throw new Error(payload.errors.map((entry) => entry.message).join('; '));
+  }
+
+  const result = payload.data?.placeOrder;
+  if (result?.errors?.length) {
+    throw new Error(
+      result.errors
+        .map((entry) => [entry.code, entry.message].filter(Boolean).join(': '))
+        .join('; '),
+    );
+  }
+
+  return result?.orderV2 || null;
+}

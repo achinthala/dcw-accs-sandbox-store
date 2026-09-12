@@ -13,6 +13,9 @@ export const STOREFRONT_BY_CODE = {
 
 export const SESSION_STORAGE_KEY = 'slimcd_checkout_session';
 
+/** Card already charged — place order only, never redirect to SlimCD again. */
+export const CAPTURED_PAYMENT_STORAGE_KEY = 'slimcd_captured_payment';
+
 export const RETURN_QUERY_FLAG = 'slimcd_return';
 
 /** Fallback when config.json / OOPE custom_config URLs are unavailable (Stage workspace). */

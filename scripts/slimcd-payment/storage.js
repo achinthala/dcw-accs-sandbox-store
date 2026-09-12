@@ -1,4 +1,4 @@
-import { SESSION_STORAGE_KEY } from './constants.js';
+import { CAPTURED_PAYMENT_STORAGE_KEY, SESSION_STORAGE_KEY } from './constants.js';
 
 const COOKIE_NAME = 'slimcd_pending';
 const COOKIE_MAX_AGE_SECONDS = 3600;
@@ -123,4 +123,29 @@ export function clearCheckoutSession(sessionId) {
     sessionStorage.removeItem(sessionLookupKey(sessionId));
     localStorage.removeItem(sessionLookupKey(sessionId));
   }
+}
+
+export function saveCapturedPayment(record) {
+  sessionStorage.setItem(CAPTURED_PAYMENT_STORAGE_KEY, JSON.stringify(record));
+}
+
+export function loadCapturedPayment(cartId) {
+  const raw = sessionStorage.getItem(CAPTURED_PAYMENT_STORAGE_KEY);
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    const record = JSON.parse(raw);
+    if (cartId && record.cartId && record.cartId !== cartId) {
+      return null;
+    }
+    return record;
+  } catch (error) {
+    return null;
+  }
+}
+
+export function clearCapturedPayment() {
+  sessionStorage.removeItem(CAPTURED_PAYMENT_STORAGE_KEY);
 }
