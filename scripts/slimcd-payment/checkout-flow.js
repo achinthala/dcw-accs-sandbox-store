@@ -685,13 +685,28 @@ export async function completeSlimCdHostedPayment({
     const headers = pending.graphqlHeaders || graphqlHeaders;
     let orderData;
     try {
-      orderData = await placeOrderWithGraphql({
-        endpoint,
-        cartId: pending.cartId,
-        headers,
-      });
+      // Prefer drop-in placeOrder (full OrderDataModel) once webhook works.
+      if (typeof placeOrder === 'function') {
+        orderData = await placeOrder(pending.cartId);
+      }
+      if (!orderData) {
+        orderData = await placeOrderWithGraphql({
+          endpoint,
+          cartId: pending.cartId,
+          headers,
+        });
+      }
     } catch (placeOrderError) {
-      throw new Error(extractPlaceOrderError(placeOrderError));
+      // Fallback path if drop-in placeOrder fails but GraphQL may still work.
+      try {
+        orderData = await placeOrderWithGraphql({
+          endpoint,
+          cartId: pending.cartId,
+          headers,
+        });
+      } catch (fallbackError) {
+        throw new Error(extractPlaceOrderError(placeOrderError || fallbackError));
+      }
     }
     if (!orderData) {
       orderData = await waitForOrderPlaced();
@@ -746,6 +761,7 @@ async function finalizeCapturedSlimCdPayment({
   paymentCode,
   graphqlEndpoint,
   graphqlHeaders,
+  placeOrder,
 }) {
   await setSlimCdPaymentMethodOnCart({
     endpoint: graphqlEndpoint,
@@ -762,11 +778,21 @@ async function finalizeCapturedSlimCdPayment({
     headers: graphqlHeaders,
   });
 
-  const orderData = await placeOrderWithGraphql({
-    endpoint: graphqlEndpoint,
-    cartId,
-    headers: graphqlHeaders,
-  });
+  let orderData;
+  if (typeof placeOrder === 'function') {
+    try {
+      orderData = await placeOrder(cartId);
+    } catch (error) {
+      console.warn('[SlimCD] Drop-in placeOrder failed; using GraphQL fallback', error);
+    }
+  }
+  if (!orderData) {
+    orderData = await placeOrderWithGraphql({
+      endpoint: graphqlEndpoint,
+      cartId,
+      headers: graphqlHeaders,
+    });
+  }
   clearCapturedPayment(captured.sessionId);
   clearCheckoutSession(captured.sessionId);
   return orderData;
@@ -913,6 +939,7 @@ export async function handleSlimCdPlaceOrder({
       paymentCode: captured.paymentCode || code || SLIMCD_PAYMENT_CODES[0],
       graphqlEndpoint,
       graphqlHeaders,
+      placeOrder,
     });
   }
 

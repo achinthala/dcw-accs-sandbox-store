@@ -2,6 +2,9 @@
  * GraphQL fragments merged into @dropins/storefront-checkout via build.mjs.
  * Fragment names must match exports in storefront-checkout/fragments.js.
  */
+import { events } from '@dropins/tools/event-bus.js';
+import { guestOrderByToken } from '@dropins/storefront-order/api.js';
+
 export const SLIMCD_CHECKOUT_GRAPHQL_OPERATIONS = [
   `
   fragment AVAILABLE_PAYMENT_METHOD_FRAGMENT on AvailablePaymentMethod {
@@ -110,7 +113,10 @@ export const PLACE_ORDER_MUTATION = `
   }
 `;
 
-/** Place order with the same GraphQL endpoint/headers used for SlimCD cart mutations. */
+/**
+ * Place order, then load the full guest/customer order model so the
+ * confirmation page has shipping, items, and customer name.
+ */
 export async function placeOrderWithGraphql({
   endpoint,
   cartId,
@@ -144,9 +150,33 @@ export async function placeOrderWithGraphql({
     );
   }
 
-  if (!result?.orderV2) {
+  const orderV2 = result?.orderV2;
+  if (!orderV2) {
     console.error('[SlimCD] placeOrder GraphQL empty order response', payload);
+    return null;
   }
 
-  return result?.orderV2 || null;
+  let orderData = {
+    number: orderV2.number,
+    token: orderV2.token,
+    id: orderV2.id,
+    email: orderV2.email,
+  };
+
+  // Guest order token → full OrderDataModel used by confirmation containers.
+  if (orderV2.token) {
+    try {
+      const fullOrder = await guestOrderByToken(orderV2.token);
+      if (fullOrder) {
+        orderData = fullOrder;
+      }
+    } catch (error) {
+      console.warn('[SlimCD] Could not hydrate full order details after placeOrder', error);
+    }
+  }
+
+  events.emit('order/placed', orderData);
+  events.emit('cart/reset', undefined);
+
+  return orderData;
 }

@@ -85,13 +85,20 @@ export function swatchImageSlot(ctx) {
  * @returns {string} The constructed order details URL
  */
 export function buildOrderDetailsUrl(orderData, orderDetailsPath = ORDER_DETAILS_PATH) {
-  const token = getUserTokenCookie();
-  const orderRef = token ? orderData.number : orderData.token;
+  const authToken = getUserTokenCookie();
+  // Logged-in: order number is enough. Guest: Magento requires the order token.
+  const orderRef = authToken ? orderData.number : (orderData.token || orderData.number);
   const orderNumber = orderData.number;
   const encodedOrderRef = encodeURIComponent(orderRef);
-  const encodedOrderNumber = encodeURIComponent(orderNumber);
 
-  return token
-    ? rootLink(`${orderDetailsPath}?orderRef=${encodedOrderRef}`)
-    : rootLink(`${orderDetailsPath}?orderRef=${encodedOrderRef}&orderNumber=${encodedOrderNumber}`);
+  if (authToken) {
+    return rootLink(`${orderDetailsPath}?orderRef=${encodedOrderRef}`);
+  }
+
+  // Guests need the token in orderRef. Keep orderNumber for display/support only.
+  const params = new URLSearchParams({ orderRef });
+  if (orderNumber) {
+    params.set('orderNumber', orderNumber);
+  }
+  return rootLink(`${orderDetailsPath}?${params.toString()}`);
 }
