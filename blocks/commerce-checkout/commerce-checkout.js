@@ -28,9 +28,11 @@ import {
   isSlimCdCheckoutReturn,
   isSlimCdPaymentMethod,
   resumeSlimCdCheckoutOnReturn,
+  syncCapturedSlimCdPaymentOnCheckout,
   waitForDropinsReady,
 } from '../../scripts/slimcd-payment/integration.js';
 import { resolveSlimCdPaymentCode } from '../../scripts/slimcd-payment/checkout-flow.js';
+import { loadCapturedPayment } from '../../scripts/slimcd-payment/storage.js';
 
 // Fragment functions
 import { createCheckoutFragment, selectors } from './fragments.js';
@@ -138,6 +140,7 @@ export default async function decorate(block) {
   const creditCardFormRef = { current: null };
   const loaderRef = { current: null };
   let latestCheckoutCart = null;
+  let slimCdPaymentUiSynced = false;
 
   events.on('checkout/initialized', (data) => {
     latestCheckoutCart = data;
@@ -256,7 +259,10 @@ export default async function decorate(block) {
 
   const handlePlaceOrder = async ({ cartId, code }) => {
     await displayOverlaySpinner(loaderRef, $loader, $loaderStatus);
-    const paymentCode = resolveSlimCdPaymentCode(latestCheckoutCart, code);
+    const captured = loadCapturedPayment(cartId);
+    const paymentCode = captured?.gateid
+      ? (captured.paymentCode || 'slimcd_usmi')
+      : resolveSlimCdPaymentCode(latestCheckoutCart, code);
 
     try {
       // Payment Services credit card
@@ -273,7 +279,7 @@ export default async function decorate(block) {
         await creditCardFormRef.current.submit();
       }
 
-      if (isSlimCdPaymentMethod(paymentCode)) {
+      if (captured?.gateid || isSlimCdPaymentMethod(paymentCode)) {
         if (!latestCheckoutCart) {
           throw new Error('Checkout cart is not loaded yet. Please try again.');
         }
@@ -415,6 +421,16 @@ export default async function decorate(block) {
 
   async function handleCheckoutUpdated(data) {
     if (!data) return;
+
+    if (!slimCdPaymentUiSynced && data.id && loadCapturedPayment(data.id)?.gateid) {
+      slimCdPaymentUiSynced = true;
+      await syncCapturedSlimCdPaymentOnCheckout({
+        cartId: data.id,
+        graphqlEndpoint: getConfigValue('commerce-endpoint'),
+        graphqlHeaders: getSlimCdGraphqlHeaders(),
+      });
+    }
+
     await initializeCheckout(data);
   }
 

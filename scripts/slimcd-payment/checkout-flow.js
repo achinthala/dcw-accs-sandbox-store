@@ -740,6 +740,76 @@ export function resolveSlimCdPaymentCode(cart, code) {
     || '';
 }
 
+async function finalizeCapturedSlimCdPayment({
+  captured,
+  cartId,
+  paymentCode,
+  graphqlEndpoint,
+  graphqlHeaders,
+}) {
+  await setSlimCdPaymentMethodOnCart({
+    endpoint: graphqlEndpoint,
+    cartId,
+    code: captured.paymentCode || paymentCode,
+    additionalData: buildAdditionalData({
+      sessionId: captured.sessionId,
+      gateid: captured.gateid,
+      storefront: captured.storefront,
+      orderRef: captured.orderRef,
+      amount: captured.amount,
+      cartId,
+    }),
+    headers: graphqlHeaders,
+  });
+
+  const orderData = await placeOrderWithGraphql({
+    endpoint: graphqlEndpoint,
+    cartId,
+    headers: graphqlHeaders,
+  });
+  clearCapturedPayment();
+  clearCheckoutSession(captured.sessionId);
+  return orderData;
+}
+
+/** Re-select SlimCD on cart + checkout UI after hosted payment (card already charged). */
+export async function syncCapturedSlimCdPaymentOnCheckout({
+  cartId,
+  graphqlEndpoint,
+  graphqlHeaders,
+}) {
+  const captured = loadCapturedPayment(cartId);
+  if (!captured?.gateid) {
+    return false;
+  }
+
+  const code = captured.paymentCode || SLIMCD_PAYMENT_CODES[0];
+
+  await setSlimCdPaymentMethodOnCart({
+    endpoint: graphqlEndpoint,
+    cartId,
+    code,
+    additionalData: buildAdditionalData({
+      sessionId: captured.sessionId,
+      gateid: captured.gateid,
+      storefront: captured.storefront,
+      orderRef: captured.orderRef,
+      amount: captured.amount,
+      cartId,
+    }),
+    headers: graphqlHeaders,
+  });
+
+  try {
+    const { setPaymentMethod } = await import('@dropins/storefront-checkout/api.js');
+    await setPaymentMethod({ code });
+  } catch (error) {
+    console.warn('[SlimCD] Could not sync payment method in checkout UI', error);
+  }
+
+  return true;
+}
+
 export async function handleSlimCdPlaceOrder({
   cartId,
   code,
@@ -748,39 +818,24 @@ export async function handleSlimCdPlaceOrder({
   graphqlHeaders,
   placeOrder,
 }) {
-  const paymentCode = resolveSlimCdPaymentCode(cart, code);
   const resolvedCartId = cart?.id || cartId;
+  const captured = loadCapturedPayment(resolvedCartId);
+
+  if (captured?.gateid) {
+    return finalizeCapturedSlimCdPayment({
+      captured,
+      cartId: resolvedCartId,
+      paymentCode: captured.paymentCode || code || SLIMCD_PAYMENT_CODES[0],
+      graphqlEndpoint,
+      graphqlHeaders,
+    });
+  }
+
+  const paymentCode = resolveSlimCdPaymentCode(cart, code);
 
   if (!isSlimCdPaymentMethod(paymentCode)) {
     await placeOrder(resolvedCartId);
     return;
-  }
-
-  const captured = loadCapturedPayment(resolvedCartId);
-  if (captured?.gateid) {
-    await setSlimCdPaymentMethodOnCart({
-      endpoint: graphqlEndpoint,
-      cartId: resolvedCartId,
-      code: captured.paymentCode || paymentCode,
-      additionalData: buildAdditionalData({
-        sessionId: captured.sessionId,
-        gateid: captured.gateid,
-        storefront: captured.storefront,
-        orderRef: captured.orderRef,
-        amount: captured.amount,
-        cartId: resolvedCartId,
-      }),
-      headers: graphqlHeaders,
-    });
-
-    const orderData = await placeOrderWithGraphql({
-      endpoint: graphqlEndpoint,
-      cartId: resolvedCartId,
-      headers: graphqlHeaders,
-    });
-    clearCapturedPayment();
-    clearCheckoutSession(captured.sessionId);
-    return orderData;
   }
 
   await startSlimCdHostedPayment({
