@@ -29,10 +29,11 @@ import {
   isSlimCdPaymentMethod,
   resumeSlimCdCheckoutOnReturn,
   syncCapturedSlimCdPaymentOnCheckout,
+  ensureCapturedPaymentFromReturn,
   waitForDropinsReady,
+  loadCapturedPayment,
 } from '../../scripts/slimcd-payment/integration.js';
 import { resolveSlimCdPaymentCode } from '../../scripts/slimcd-payment/checkout-flow.js';
-import { loadCapturedPayment } from '../../scripts/slimcd-payment/storage.js';
 
 // Fragment functions
 import { createCheckoutFragment, selectors } from './fragments.js';
@@ -192,28 +193,34 @@ export default async function decorate(block) {
   }
 
   const returnParamsAfterResume = new URLSearchParams(window.location.search);
+  let slimCdReturnSessionId = '';
   if (isSlimCdCheckoutReturn(returnParamsAfterResume)) {
-    const sessionId = returnParamsAfterResume.get('sessionid')
+    slimCdReturnSessionId = returnParamsAfterResume.get('sessionid')
       || returnParamsAfterResume.get('sessionId')
       || '';
+
+    // Persist gateid for Place Order even if auto-complete failed.
+    try {
+      await ensureCapturedPaymentFromReturn({
+        graphqlEndpoint: getConfigValue('commerce-endpoint'),
+        graphqlHeaders: getSlimCdGraphqlHeaders(),
+      });
+    } catch (error) {
+      console.warn('[SlimCD] Could not prepare captured payment for recovery', error);
+    }
+
     block.innerHTML = `
       <div class="slimcd-checkout-resume-error">
         <h2>Payment confirmed — finish your order</h2>
-        <p>Your card was already charged by SlimCD. Complete checkout below and click <strong>Place Order</strong>.</p>
-        <p><strong>Do not pay again.</strong> Session: ${sessionId}</p>
+        <p>Your card was already charged by SlimCD. Select <strong>Credit Card (SlimCD)</strong> if needed, then click <strong>Place Order</strong>.</p>
+        <p><strong>Do not pay again.</strong> Session: ${slimCdReturnSessionId}</p>
       </div>
     `;
-    console.warn('[SlimCD] Payment return detected but auto place order did not finish.', { sessionId });
+    console.warn('[SlimCD] Payment return detected but auto place order did not finish.', {
+      sessionId: slimCdReturnSessionId,
+    });
 
-    const cleanUrl = new URL(window.location.href);
-    cleanUrl.searchParams.delete('slimcd_return');
-    cleanUrl.searchParams.delete('slimcd_cart');
-    cleanUrl.searchParams.delete('slimcd_pay');
-    cleanUrl.searchParams.delete('slimcd_sid');
-    cleanUrl.searchParams.delete('sessionid');
-    cleanUrl.searchParams.delete('sessionId');
-    cleanUrl.searchParams.delete('slimcd_store');
-    window.history.replaceState({}, document.title, cleanUrl.toString());
+    // Keep sessionid until order succeeds so recovery can re-run if needed.
   }
 
   events.on('order/placed', () => {
@@ -259,7 +266,12 @@ export default async function decorate(block) {
 
   const handlePlaceOrder = async ({ cartId, code }) => {
     await displayOverlaySpinner(loaderRef, $loader, $loaderStatus);
-    const captured = loadCapturedPayment(cartId);
+    const returnParams = new URLSearchParams(window.location.search);
+    const sessionHint = returnParams.get('sessionid')
+      || returnParams.get('sessionId')
+      || slimCdReturnSessionId
+      || '';
+    const captured = loadCapturedPayment(cartId, sessionHint) || loadCapturedPayment();
     const paymentCode = captured?.gateid
       ? (captured.paymentCode || 'slimcd_usmi')
       : resolveSlimCdPaymentCode(latestCheckoutCart, code);
@@ -422,12 +434,21 @@ export default async function decorate(block) {
   async function handleCheckoutUpdated(data) {
     if (!data) return;
 
-    if (!slimCdPaymentUiSynced && data.id && loadCapturedPayment(data.id)?.gateid) {
+    const returnParams = new URLSearchParams(window.location.search);
+    const sessionHint = returnParams.get('sessionid')
+      || returnParams.get('sessionId')
+      || slimCdReturnSessionId
+      || '';
+
+    if (!slimCdPaymentUiSynced
+      && data.id
+      && (loadCapturedPayment(data.id, sessionHint) || loadCapturedPayment())?.gateid) {
       slimCdPaymentUiSynced = true;
       await syncCapturedSlimCdPaymentOnCheckout({
         cartId: data.id,
         graphqlEndpoint: getConfigValue('commerce-endpoint'),
         graphqlHeaders: getSlimCdGraphqlHeaders(),
+        sessionId: sessionHint,
       });
     }
 

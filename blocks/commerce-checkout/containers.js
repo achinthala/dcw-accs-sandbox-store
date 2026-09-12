@@ -61,7 +61,9 @@ import {
 } from '@dropins/storefront-checkout/lib/utils.js';
 
 import { showModal, swatchImageSlot } from './utils.js';
-import { slimCdPaymentMethodsOptions } from '../../scripts/slimcd-payment/integration.js';
+import { getSlimCdPaymentMethodsOptions } from '../../scripts/slimcd-payment/integration.js';
+import { loadCapturedPayment } from '../../scripts/slimcd-payment/storage.js';
+import { SLIMCD_PAYMENT_CODES } from '../../scripts/slimcd-payment/constants.js';
 
 // External dependencies
 import {
@@ -339,46 +341,62 @@ export const renderShippingMethods = async (container) => renderContainer(
  * @param {Object} creditCardFormRef - React-style ref for credit card form
  * @returns {Promise<Object>} - The rendered payment methods component
  */
-export const renderPaymentMethods = async (container, creditCardFormRef) => renderContainer(
-  CONTAINERS.PAYMENT_METHODS,
-  async () => CheckoutProvider.render(PaymentMethods, {
-    ...slimCdPaymentMethodsOptions,
-    slots: {
-      Methods: {
-        [PaymentMethodCode.CREDIT_CARD]: {
-          render: (ctx) => {
-            const $creditCard = document.createElement('div');
+export const renderPaymentMethods = async (container, creditCardFormRef) => {
+  const captured = loadCapturedPayment();
+  const methodSlots = {
+    [PaymentMethodCode.CREDIT_CARD]: {
+      render: (ctx) => {
+        const $creditCard = document.createElement('div');
 
-            PaymentServices.render(CreditCard, {
-              getCartId: () => ctx.cartId,
-              creditCardFormRef,
-            })($creditCard);
+        PaymentServices.render(CreditCard, {
+          getCartId: () => ctx.cartId,
+          creditCardFormRef,
+        })($creditCard);
 
-            ctx.replaceHTML($creditCard);
-          },
-        },
-        [PaymentMethodCode.SMART_BUTTONS]: {
-          enabled: false,
-        },
-        [PaymentMethodCode.APPLE_PAY]: {
-          enabled: false,
-        },
-        [PaymentMethodCode.APM]: {
-          enabled: false,
-        },
-        [PaymentMethodCode.GOOGLE_PAY]: {
-          enabled: false,
-        },
-        [PaymentMethodCode.VAULT]: {
-          enabled: false,
-        },
-        [PaymentMethodCode.FASTLANE]: {
-          enabled: false,
-        },
+        ctx.replaceHTML($creditCard);
       },
     },
-  })(container),
-);
+    [PaymentMethodCode.SMART_BUTTONS]: {
+      enabled: false,
+    },
+    [PaymentMethodCode.APPLE_PAY]: {
+      enabled: false,
+    },
+    [PaymentMethodCode.APM]: {
+      enabled: false,
+    },
+    [PaymentMethodCode.GOOGLE_PAY]: {
+      enabled: false,
+    },
+    [PaymentMethodCode.VAULT]: {
+      enabled: false,
+    },
+    [PaymentMethodCode.FASTLANE]: {
+      enabled: false,
+    },
+  };
+
+  // Card already charged — do not offer Check/Money order for this checkout.
+  if (captured?.gateid) {
+    methodSlots.checkmo = { enabled: false };
+    for (const code of SLIMCD_PAYMENT_CODES) {
+      methodSlots[code] = {
+        ...(methodSlots[code] || {}),
+        // Keep SlimCD visible/selectable for order completion.
+      };
+    }
+  }
+
+  return renderContainer(
+    CONTAINERS.PAYMENT_METHODS,
+    async () => CheckoutProvider.render(PaymentMethods, {
+      ...getSlimCdPaymentMethodsOptions(),
+      slots: {
+        Methods: methodSlots,
+      },
+    })(container),
+  );
+};
 
 /**
  * Renders terms and conditions with agreement slots and manual consent mode

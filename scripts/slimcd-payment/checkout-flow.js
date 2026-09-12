@@ -696,7 +696,7 @@ export async function completeSlimCdHostedPayment({
     if (!orderData) {
       orderData = await waitForOrderPlaced();
     }
-    clearCapturedPayment();
+    clearCapturedPayment(pending.sessionId || sessionId);
     clearCheckoutSession(pending.sessionId || sessionId);
 
     const cleanUrl = new URL(window.location.href);
@@ -767,9 +767,92 @@ async function finalizeCapturedSlimCdPayment({
     cartId,
     headers: graphqlHeaders,
   });
-  clearCapturedPayment();
+  clearCapturedPayment(captured.sessionId);
   clearCheckoutSession(captured.sessionId);
   return orderData;
+}
+
+/**
+ * After a failed auto placeOrder, ensure captured payment is stored so Place Order
+ * finishes SlimCD without charging again — even if Check/Money order is selected.
+ */
+export async function ensureCapturedPaymentFromReturn({
+  graphqlEndpoint,
+  graphqlHeaders,
+}) {
+  const params = new URLSearchParams(window.location.search);
+  const sessionId = normalizeSessionId(resolveSlimCdReturnSessionId(params));
+  if (!sessionId && !isSlimCdCheckoutReturn(params)) {
+    return loadCapturedPayment();
+  }
+
+  const existing = loadCapturedPayment(null, sessionId);
+  if (existing?.gateid) {
+    return existing;
+  }
+
+  const storedCartRef = resolveStoredCartReference();
+  const localPending = resolvePendingCheckoutSession({
+    cart: storedCartRef,
+    graphqlEndpoint,
+    graphqlHeaders,
+  });
+  const checkSessionUrl = localPending?.checkSessionUrl
+    || buildRuntimeActionUrl('check-payment-session');
+  if (!checkSessionUrl || !sessionId) {
+    return existing;
+  }
+
+  const storefront = resolveStorefrontForReturn(params, storedCartRef, localPending, null);
+  const verified = await checkPaymentSession({
+    checkSessionUrl,
+    sessionId,
+    storefront,
+  });
+
+  if (!verified?.approved || !verified?.gateid) {
+    return existing;
+  }
+
+  const cartId = verified.cartId
+    || localPending?.cartId
+    || params.get('slimcd_cart')
+    || storedCartRef?.id;
+  const paymentCode = verified.paymentCode
+    || localPending?.paymentCode
+    || params.get('slimcd_pay')
+    || SLIMCD_PAYMENT_CODES[0];
+  const amount = verified.amount
+    ? formatAmount(verified.amount)
+    : (localPending?.amount || null);
+
+  const paymentPayload = {
+    sessionId: verified.sessionId || sessionId,
+    gateid: verified.gateid,
+    storefront: verified.storefront || storefront || 'USMI',
+    orderRef: verified.orderRef || localPending?.orderRef || String(cartId || '').slice(0, 20),
+    amount,
+    cartId,
+    paymentCode,
+  };
+
+  saveCapturedPayment(paymentPayload);
+
+  if (cartId) {
+    try {
+      await setSlimCdPaymentMethodOnCart({
+        endpoint: graphqlEndpoint,
+        cartId,
+        code: paymentCode,
+        additionalData: buildAdditionalData(paymentPayload),
+        headers: graphqlHeaders,
+      });
+    } catch (error) {
+      console.warn('[SlimCD] Could not set payment method while preparing captured payment', error);
+    }
+  }
+
+  return paymentPayload;
 }
 
 /** Re-select SlimCD on cart + checkout UI after hosted payment (card already charged). */
@@ -777,8 +860,9 @@ export async function syncCapturedSlimCdPaymentOnCheckout({
   cartId,
   graphqlEndpoint,
   graphqlHeaders,
+  sessionId,
 }) {
-  const captured = loadCapturedPayment(cartId);
+  const captured = loadCapturedPayment(cartId, sessionId);
   if (!captured?.gateid) {
     return false;
   }
@@ -787,7 +871,7 @@ export async function syncCapturedSlimCdPaymentOnCheckout({
 
   await setSlimCdPaymentMethodOnCart({
     endpoint: graphqlEndpoint,
-    cartId,
+    cartId: cartId || captured.cartId,
     code,
     additionalData: buildAdditionalData({
       sessionId: captured.sessionId,
@@ -795,7 +879,7 @@ export async function syncCapturedSlimCdPaymentOnCheckout({
       storefront: captured.storefront,
       orderRef: captured.orderRef,
       amount: captured.amount,
-      cartId,
+      cartId: cartId || captured.cartId,
     }),
     headers: graphqlHeaders,
   });
@@ -819,12 +903,13 @@ export async function handleSlimCdPlaceOrder({
   placeOrder,
 }) {
   const resolvedCartId = cart?.id || cartId;
-  const captured = loadCapturedPayment(resolvedCartId);
+  const captured = loadCapturedPayment(resolvedCartId)
+    || loadCapturedPayment();
 
   if (captured?.gateid) {
     return finalizeCapturedSlimCdPayment({
       captured,
-      cartId: resolvedCartId,
+      cartId: captured.cartId || resolvedCartId,
       paymentCode: captured.paymentCode || code || SLIMCD_PAYMENT_CODES[0],
       graphqlEndpoint,
       graphqlHeaders,

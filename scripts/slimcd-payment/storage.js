@@ -1,6 +1,7 @@
 import { CAPTURED_PAYMENT_STORAGE_KEY, SESSION_STORAGE_KEY } from './constants.js';
 
 const COOKIE_NAME = 'slimcd_pending';
+const CAPTURED_COOKIE_NAME = 'slimcd_captured';
 const COOKIE_MAX_AGE_SECONDS = 3600;
 
 function normalizeSessionId(sessionId) {
@@ -9,6 +10,10 @@ function normalizeSessionId(sessionId) {
 
 function sessionLookupKey(sessionId) {
   return `${SESSION_STORAGE_KEY}:${normalizeSessionId(sessionId)}`;
+}
+
+function capturedLookupKey(sessionId) {
+  return `${CAPTURED_PAYMENT_STORAGE_KEY}:${normalizeSessionId(sessionId)}`;
 }
 
 function readStoredPayload() {
@@ -34,6 +39,14 @@ function readCookie(name) {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
+function writeCookie(name, value, maxAge = COOKIE_MAX_AGE_SECONDS) {
+  document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${maxAge}; SameSite=Lax`;
+}
+
+function clearCookie(name) {
+  document.cookie = `${name}=; path=/; max-age=0; SameSite=Lax`;
+}
+
 function writePendingCookie(data) {
   const minimal = {
     cartId: data.cartId,
@@ -43,11 +56,11 @@ function writePendingCookie(data) {
     orderRef: data.orderRef,
     amount: data.amount,
   };
-  document.cookie = `${COOKIE_NAME}=${encodeURIComponent(JSON.stringify(minimal))}; path=/; max-age=${COOKIE_MAX_AGE_SECONDS}; SameSite=Lax`;
+  writeCookie(COOKIE_NAME, JSON.stringify(minimal));
 }
 
 function clearPendingCookie() {
-  document.cookie = `${COOKIE_NAME}=; path=/; max-age=0; SameSite=Lax`;
+  clearCookie(COOKIE_NAME);
 }
 
 export function loadCheckoutSessionFromCookie(sessionId) {
@@ -126,26 +139,73 @@ export function clearCheckoutSession(sessionId) {
 }
 
 export function saveCapturedPayment(record) {
-  sessionStorage.setItem(CAPTURED_PAYMENT_STORAGE_KEY, JSON.stringify(record));
+  const payload = JSON.stringify(record);
+  sessionStorage.setItem(CAPTURED_PAYMENT_STORAGE_KEY, payload);
+  try {
+    localStorage.setItem(CAPTURED_PAYMENT_STORAGE_KEY, payload);
+    if (record?.sessionId) {
+      const key = capturedLookupKey(record.sessionId);
+      sessionStorage.setItem(key, payload);
+      localStorage.setItem(key, payload);
+    }
+    writeCookie(CAPTURED_COOKIE_NAME, payload);
+  } catch (error) {
+    // ignore storage failures
+  }
 }
 
-export function loadCapturedPayment(cartId) {
-  const raw = sessionStorage.getItem(CAPTURED_PAYMENT_STORAGE_KEY);
+function parseCaptured(raw) {
   if (!raw) {
     return null;
   }
-
   try {
-    const record = JSON.parse(raw);
-    if (cartId && record.cartId && record.cartId !== cartId) {
-      return null;
-    }
-    return record;
+    return JSON.parse(raw);
   } catch (error) {
     return null;
   }
 }
 
-export function clearCapturedPayment() {
+export function loadCapturedPayment(cartId, sessionId) {
+  const normalizedSession = normalizeSessionId(sessionId);
+  const candidates = [];
+
+  if (normalizedSession) {
+    candidates.push(
+      sessionStorage.getItem(capturedLookupKey(normalizedSession)),
+      localStorage.getItem(capturedLookupKey(normalizedSession)),
+    );
+  }
+
+  candidates.push(
+    sessionStorage.getItem(CAPTURED_PAYMENT_STORAGE_KEY),
+    localStorage.getItem(CAPTURED_PAYMENT_STORAGE_KEY),
+    readCookie(CAPTURED_COOKIE_NAME),
+  );
+
+  for (const raw of candidates) {
+    const record = parseCaptured(raw);
+    if (!record?.gateid) {
+      continue;
+    }
+    if (cartId && record.cartId && record.cartId !== cartId) {
+      continue;
+    }
+    if (normalizedSession && record.sessionId
+      && normalizeSessionId(record.sessionId) !== normalizedSession) {
+      continue;
+    }
+    return record;
+  }
+
+  return null;
+}
+
+export function clearCapturedPayment(sessionId) {
   sessionStorage.removeItem(CAPTURED_PAYMENT_STORAGE_KEY);
+  localStorage.removeItem(CAPTURED_PAYMENT_STORAGE_KEY);
+  clearCookie(CAPTURED_COOKIE_NAME);
+  if (sessionId) {
+    sessionStorage.removeItem(capturedLookupKey(sessionId));
+    localStorage.removeItem(capturedLookupKey(sessionId));
+  }
 }
