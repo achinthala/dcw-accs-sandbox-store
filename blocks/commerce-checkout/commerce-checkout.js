@@ -181,7 +181,6 @@ export default async function decorate(block) {
     graphqlHeaders: getSlimCdGraphqlHeaders(),
     onError: (error) => {
       console.error('[SlimCD]', error);
-      window.alert(error.message || 'SlimCD payment failed. Please try again.');
     },
   });
 

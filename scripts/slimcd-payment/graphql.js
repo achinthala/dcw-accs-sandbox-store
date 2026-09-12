@@ -130,16 +130,22 @@ export async function placeOrderWithGraphql({
 
   const payload = await response.json();
   if (payload.errors?.length) {
+    console.error('[SlimCD] placeOrder GraphQL top-level errors', payload.errors);
     throw new Error(payload.errors.map((entry) => entry.message).join('; '));
   }
 
   const result = payload.data?.placeOrder;
   if (result?.errors?.length) {
+    console.error('[SlimCD] placeOrder GraphQL user errors', result.errors);
     throw new Error(
       result.errors
         .map((entry) => [entry.code, entry.message].filter(Boolean).join(': '))
         .join('; '),
     );
+  }
+
+  if (!result?.orderV2) {
+    console.error('[SlimCD] placeOrder GraphQL empty order response', payload);
   }
 
   return result?.orderV2 || null;
