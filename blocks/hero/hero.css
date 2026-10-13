@@ -35,3 +35,11 @@
     padding: 40px 32px;
   }
 }
+
+.hero.dark picture {
+  background-color: var(--color-neutral-900);
+}
+
+.hero.dark p {
+  color: var(--color-neutral-50);
+}
