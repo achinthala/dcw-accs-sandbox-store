@@ -26,6 +26,15 @@
   margin-top: var(--spacing-medium);
 }
 
+/* Reserved at slot mount so a later text update does not push the list. */
+.commerce-cart .delivery-estimate {
+  box-sizing: border-box;
+  min-height: 4rem;
+  margin-top: var(--spacing-xsmall);
+  font: var(--type-body-2-default-font);
+  letter-spacing: var(--type-body-2-default-letter-spacing);
+}
+
 .dropin-cart-item__footer {
   margin-top: var(--spacing-xsmall);
   gap: var(--spacing-xsmall);
@@ -105,5 +114,9 @@
   .cart__right-column {
     flex: 1;
     flex-basis: auto;
+  }
+
+  .commerce-cart .delivery-estimate {
+    min-height: 2rem;
   }
 }
