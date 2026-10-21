@@ -276,6 +276,20 @@ export default async function decorate(block) {
       enableRemoveItem: enableRemoveItem === 'true',
       undo: undo === 'true',
       slots: {
+        Heading: (ctx) => {
+          // Built once, when the slot mounts. Cart updates only replace the text.
+          const estimate = document.createElement('div');
+          estimate.className = 'delivery-estimate';
+          estimate.setAttribute('role', 'status');
+          estimate.setAttribute('aria-live', 'polite');
+          estimate.textContent = estimateDeliveryLabel(ctx.count);
+          ctx.appendChild(estimate);
+
+          ctx.onChange((next) => {
+            estimate.textContent = estimateDeliveryLabel(next.count);
+          });
+        },
+
         Thumbnail: (ctx) => {
           const { item, defaultImageProps } = ctx;
           const anchorWrapper = document.createElement('a');
@@ -457,6 +471,34 @@ export default async function decorate(block) {
 
 function isCartEmpty(cart) {
   return cart ? cart.totalQuantity < 1 : true;
+}
+
+const EMPTY_CART_BUSINESS_DAYS = 7;
+const FILLED_CART_BUSINESS_DAYS = 5;
+
+function addBusinessDays(start, days) {
+  const date = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  let remaining = days;
+  while (remaining > 0) {
+    date.setDate(date.getDate() + 1);
+    const weekday = date.getDay();
+    if (weekday !== 0 && weekday !== 6) {
+      remaining -= 1;
+    }
+  }
+  return date;
+}
+
+function estimateDeliveryLabel(count) {
+  const quantity = Number(count) || 0;
+  const days = quantity > 0 ? FILLED_CART_BUSINESS_DAYS : EMPTY_CART_BUSINESS_DAYS;
+  const deliveryDate = addBusinessDays(new Date(), days);
+  const formatted = deliveryDate.toLocaleDateString(undefined, {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  });
+  return `Estimated delivery: ${formatted}`;
 }
 
 function swatchImageSlot(ctx) {
