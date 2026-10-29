@@ -4,20 +4,27 @@
 /*
  * Mega menu styles, shared by the EDS block and the Admin UI preview.
  * Everything is scoped to .mega-menu. Theme it by overriding the --mm-* tokens;
- * they fall back to the EDS boilerplate variables when present.
+ * they fall back to the Commerce boilerplate design tokens when present.
  */
 
 .mega-menu {
-  --mm-bg: var(--background-color, #fff);
-  --mm-fg: var(--text-color, #16181d);
+  --mm-bg: var(--color-neutral-50, var(--background-color, #fff));
+  --mm-fg: var(--color-neutral-800, var(--text-color, #16181d));
   --mm-muted: color-mix(in srgb, var(--mm-fg) 62%, transparent);
   --mm-line: color-mix(in srgb, var(--mm-fg) 10%, transparent);
   --mm-hover: color-mix(in srgb, var(--mm-fg) 5%, transparent);
   --mm-radius: 16px;
   --mm-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
 
-  font-family: var(--body-font-family, system-ui, -apple-system, "Segoe UI", sans-serif);
+  font-family: var(--type-base-font-family, var(--body-font-family, system-ui, -apple-system, "Segoe UI", sans-serif));
   color: var(--mm-fg);
+}
+
+/* Host pages style links/buttons globally; the menu sets its own. */
+.mega-menu .mm a,
+.mega-menu .mm button {
+  font-family: inherit;
+  letter-spacing: normal;
 }
 
 .mega-menu .mm {

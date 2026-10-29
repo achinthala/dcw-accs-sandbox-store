@@ -15,7 +15,7 @@
  */
 import { events } from '@dropins/tools/event-bus.js';
 import { getConfigValue, getHeaders } from '@dropins/tools/lib/aem/configs.js';
-import { readBlockConfig } from '../../scripts/aem.js';
+import { loadCSS, readBlockConfig } from '../../scripts/aem.js';
 import { renderMegaMenu } from './mega-menu-render.js';
 
 const CACHE_PREFIX = 'mega-menu:';
@@ -65,7 +65,10 @@ export async function loadMegaMenu(container, {
   endpoint, storeView = defaultStoreView(), embedded = false, anchor, breakpoint = 900,
 } = {}) {
   if (!endpoint) return false;
-  container.classList.add('mega-menu');
+  // `dropin-design` opts out of the global `a:not(.dropin-design a)` link styles.
+  container.classList.add('mega-menu', 'dropin-design');
+  // EDS only loads block CSS for decorated blocks; header.js calls us directly.
+  const styles = loadCSS(`${window.hlx.codeBasePath}/blocks/mega-menu/mega-menu.css`);
 
   let rendered = null;
   let shownVersion = null;
@@ -83,6 +86,7 @@ export async function loadMegaMenu(container, {
     url.searchParams.set('group_hash', groupHash);
     const key = CACHE_PREFIX + url.search;
     const cached = readCache(key);
+    await styles.catch(() => {}); // never paint the menu unstyled
 
     if (cached?.menu) {
       if (shownVersion !== `${cached.menu.version}-${cached.menu.customerGroup}`) show(cached.menu);
