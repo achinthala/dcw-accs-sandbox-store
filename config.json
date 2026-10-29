@@ -3,6 +3,7 @@
     "default": {
       "commerce-endpoint": "https://na1-sandbox.api.commerce.adobe.com/4m1gMbgjnfNhadp18vbSSn/graphql",
       "slimcd-runtime-base-url": "https://1890365-slimcdpaymentgateway-stage.adobeioruntime.net/api/v1/web/slimcd-payment-gateway",
+      "mega-menu-endpoint": "https://1890365-megamenu-stage.adobeioruntime.net/api/v1/web/megamenu/storefront-menu",
       "headers": {
         "all": {
           "Store": "default"
@@ -16,7 +17,7 @@
       "commerce-b2b-enabled": true,
       "commerce-companies-enabled": true,
       "commerce-assets-enabled": true,
-      "adobe-commerce-optimizer": false,
+      "adobe-commerce-optimizer": true,
       "analytics": {
         "base-currency-code": "USD",
         "environment": "Testing",

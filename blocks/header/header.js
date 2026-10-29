@@ -10,6 +10,7 @@ import { fetchPlaceholders, getProductLink, rootLink } from '../../scripts/comme
 import renderAuthCombine from './renderAuthCombine.js';
 import { renderAuthDropdown } from './renderAuthDropdown.js';
 import renderSellerAssistedBuyingBanner from './renderSellerAssistedBuyingBanner.js';
+import { loadMegaMenu } from '../mega-menu/mega-menu.js';
 
 // media query match that indicates mobile/tablet width
 const isDesktop = window.matchMedia('(min-width: 900px)');
@@ -218,6 +219,23 @@ export default async function decorate(block) {
             overlay.classList.add('show');
           }
         });
+      });
+  }
+
+  /** Mega Menu (App Builder) — replaces the authored sections when available */
+  const megaMenuEndpoint = getConfigValue('mega-menu-endpoint');
+  if (navSections && megaMenuEndpoint) {
+    const megaMenu = document.createElement('div');
+    megaMenu.className = 'nav-mega-menu';
+    navSections.after(megaMenu);
+    // Hide the authored sections up front to avoid a flash; restored on failure.
+    nav.classList.add('nav-has-mega-menu');
+    loadMegaMenu(megaMenu, { endpoint: megaMenuEndpoint, embedded: true, anchor: nav })
+      .then((ok) => {
+        if (!ok) {
+          megaMenu.remove();
+          nav.classList.remove('nav-has-mega-menu');
+        }
       });
   }
 

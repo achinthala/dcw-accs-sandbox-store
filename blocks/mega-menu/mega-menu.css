@@ -1,0 +1,735 @@
+/* stylelint-disable no-descending-specificity -- rules are grouped by context
+   (desktop, mobile, embedded, preview) so later context overrides read top-down. */
+
+/*
+ * Mega menu styles, shared by the EDS block and the Admin UI preview.
+ * Everything is scoped to .mega-menu. Theme it by overriding the --mm-* tokens;
+ * they fall back to the EDS boilerplate variables when present.
+ */
+
+.mega-menu {
+  --mm-bg: var(--background-color, #fff);
+  --mm-fg: var(--text-color, #16181d);
+  --mm-muted: color-mix(in srgb, var(--mm-fg) 62%, transparent);
+  --mm-line: color-mix(in srgb, var(--mm-fg) 10%, transparent);
+  --mm-hover: color-mix(in srgb, var(--mm-fg) 5%, transparent);
+  --mm-radius: 16px;
+  --mm-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  font-family: var(--body-font-family, system-ui, -apple-system, "Segoe UI", sans-serif);
+  color: var(--mm-fg);
+}
+
+.mega-menu .mm {
+  position: relative;
+  z-index: 30;
+}
+
+.mega-menu .mm button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.mega-menu .mm a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.mega-menu .mm :is(a, button):focus-visible {
+  outline: 2px solid var(--mm-accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.mega-menu .mm svg {
+  width: 1em;
+  height: 1em;
+  flex: none;
+}
+
+.mega-menu .mm-toggle,
+.mega-menu .mm-drawer-head {
+  display: none;
+}
+
+/* ---------- Top bar (desktop) ---------- */
+
+/* Static on desktop so panels span the whole nav, not just the bar. */
+.mega-menu .mm-drawer {
+  position: static;
+}
+
+.mega-menu .mm-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.mega-menu .mm-item {
+  position: static;
+}
+
+.mega-menu .mm-top {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+  white-space: nowrap;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.mega-menu .mm-top::after {
+  content: "";
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 3px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--mm-accent);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.3s var(--mm-ease);
+}
+
+.mega-menu .mm-item:hover > .mm-top,
+.mega-menu .mm-open > .mm-top {
+  background: var(--mm-hover);
+}
+
+.mega-menu .mm-item:hover > .mm-top::after,
+.mega-menu .mm-open > .mm-top::after {
+  transform: scaleX(1);
+}
+
+.mega-menu .mm-highlight > .mm-top {
+  color: var(--mm-accent);
+}
+
+.mega-menu .mm-chevron {
+  display: inline-flex;
+  font-size: 12px;
+  opacity: 0.7;
+  transition: transform 0.25s var(--mm-ease);
+}
+
+.mega-menu .mm-open .mm-chevron {
+  transform: rotate(180deg);
+}
+
+/* ---------- Badges ---------- */
+
+.mega-menu .mm-badge {
+  display: inline-block;
+  padding: 3px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.mega-menu .mm-badge-new {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.mega-menu .mm-badge-info {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.mega-menu .mm-badge-sale {
+  background: var(--mm-accent);
+  color: #fff;
+}
+
+.mega-menu .mm-badge-hot {
+  background: linear-gradient(135deg, #ff7a18, #e5195e);
+  color: #fff;
+}
+
+/* ---------- Panel (desktop) ---------- */
+
+.mega-menu .mm-panel {
+  position: absolute;
+  z-index: 2;
+  top: calc(100% + 10px);
+  left: 0;
+  right: 0;
+  background: var(--mm-bg);
+  border-radius: var(--mm-radius);
+  box-shadow:
+    0 0 0 1px var(--mm-line),
+    0 30px 70px -20px rgb(15 20 30 / 35%),
+    0 12px 24px -12px rgb(15 20 30 / 18%);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-10px) scale(0.99);
+  transform-origin: top center;
+  transition:
+    opacity 0.22s var(--mm-ease),
+    transform 0.28s var(--mm-ease),
+    visibility 0s linear 0.28s;
+}
+
+/* Hover bridge across the gap between the bar and the panel. */
+.mega-menu .mm-panel::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -12px;
+  height: 12px;
+}
+
+.mega-menu .mm-open > .mm-panel {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition-delay: 0s;
+}
+
+.mega-menu .mm-panel-inner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 36px;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 26px 32px 32px;
+}
+
+.mega-menu .mm-panel-inner.mm-has-promo {
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 300px);
+}
+
+.mega-menu .mm-panel-head {
+  margin-bottom: 22px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--mm-line);
+}
+
+.mega-menu .mm-shop-all,
+.mega-menu .mm-view-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--mm-accent);
+  font-weight: 600;
+}
+
+.mega-menu .mm-shop-all {
+  font-size: 14px;
+}
+
+.mega-menu .mm-view-all {
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+.mega-menu .mm-shop-all svg,
+.mega-menu .mm-view-all svg {
+  transition: transform 0.25s var(--mm-ease);
+}
+
+.mega-menu .mm-shop-all:hover svg,
+.mega-menu .mm-view-all:hover svg {
+  transform: translateX(4px);
+}
+
+.mega-menu .mm-columns {
+  display: grid;
+  grid-template-columns: repeat(var(--mm-cols, 4), minmax(0, 1fr));
+  gap: 28px 32px;
+}
+
+.mega-menu .mm-col {
+  min-width: 0;
+}
+
+.mega-menu .mm-open .mm-col {
+  animation: mm-rise 0.45s var(--mm-ease) both;
+  animation-delay: calc(var(--mm-i, 0) * 40ms + 60ms);
+}
+
+.mega-menu .mm-col-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mega-menu .mm-col-title {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 15px;
+  font-weight: 700;
+  transition: color 0.2s;
+}
+
+.mega-menu .mm-col-title:hover {
+  color: var(--mm-accent);
+}
+
+.mega-menu .mm-col-toggle {
+  display: none;
+}
+
+.mega-menu .mm-col-links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.mega-menu .mm-col-links a {
+  display: inline-block;
+  padding: 5px 0;
+  color: var(--mm-muted);
+  font-size: 14px;
+  line-height: 1.35;
+  background: linear-gradient(var(--mm-accent), var(--mm-accent)) left 100% / 0 1px no-repeat;
+  transition: color 0.2s, background-size 0.3s var(--mm-ease);
+}
+
+.mega-menu .mm-col-links a:hover {
+  color: var(--mm-fg);
+  background-size: 100% 1px;
+}
+
+/* "list" layout: a compact list of sub-categories, no third level. */
+.mega-menu [data-layout="list"] .mm-columns {
+  grid-template-columns: repeat(var(--mm-cols, 2), minmax(0, 1fr));
+  gap: 2px 24px;
+}
+
+.mega-menu [data-layout="list"] .mm-col-links,
+.mega-menu [data-layout="list"] .mm-view-all {
+  display: none;
+}
+
+.mega-menu [data-layout="list"] .mm-col-title {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.mega-menu [data-layout="list"] .mm-col-title:hover {
+  background: var(--mm-hover);
+}
+
+/* ---------- Promo card ---------- */
+
+.mega-menu .mm-promo {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  min-height: 300px;
+  overflow: hidden;
+  border-radius: 14px;
+  background: #111;
+  color: #fff;
+  isolation: isolate;
+}
+
+.mega-menu .mm-promo img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: -2;
+  transition: transform 0.8s var(--mm-ease);
+}
+
+.mega-menu .mm-promo::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(180deg, rgb(0 0 0 / 0%) 35%, rgb(0 0 0 / 78%) 100%);
+}
+
+.mega-menu .mm-promo:hover img {
+  transform: scale(1.06);
+}
+
+.mega-menu .mm-promo-plain {
+  background:
+    radial-gradient(120% 90% at 100% 0%, rgb(255 255 255 / 22%), transparent 55%),
+    linear-gradient(140deg, var(--mm-accent), color-mix(in srgb, var(--mm-accent) 45%, #000));
+}
+
+.mega-menu .mm-promo-plain::after {
+  display: none;
+}
+
+.mega-menu .mm-promo-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 22px;
+}
+
+.mega-menu .mm-promo-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+.mega-menu .mm-promo-title {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.mega-menu .mm-promo-text {
+  font-size: 13px;
+  line-height: 1.45;
+  opacity: 0.88;
+}
+
+.mega-menu .mm-promo-cta {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 9px 16px;
+  border-radius: 999px;
+  background: #fff;
+  color: #111;
+  font-size: 13px;
+  font-weight: 700;
+  transition: gap 0.25s var(--mm-ease);
+}
+
+.mega-menu .mm-promo:hover .mm-promo-cta {
+  gap: 10px;
+}
+
+/* ---------- Scrim ---------- */
+
+.mega-menu .mm-scrim {
+  position: fixed;
+  inset: var(--mm-scrim-top, 0) 0 0;
+  z-index: -1; /* below the bar, above the page (.mm is a stacking context) */
+  background: rgb(10 12 16 / 32%);
+  backdrop-filter: blur(2px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s;
+}
+
+.mega-menu .mm-panel-open:not(.mm-mobile) .mm-scrim {
+  opacity: 1;
+}
+
+/* ---------- Mobile drawer ---------- */
+
+.mega-menu .mm-mobile .mm-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  font-size: 22px;
+}
+
+.mega-menu .mm-mobile .mm-drawer {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 1001;
+  width: min(420px, 88vw);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--mm-bg);
+  box-shadow: 24px 0 60px -20px rgb(0 0 0 / 35%);
+  transform: translateX(-102%);
+  transition: transform 0.32s var(--mm-ease);
+}
+
+.mega-menu .mm-mobile.mm-drawer-open .mm-drawer {
+  transform: none;
+}
+
+.mega-menu .mm-mobile .mm-scrim {
+  inset: 0;
+  z-index: 1000;
+}
+
+.mega-menu .mm-mobile.mm-drawer-open .mm-scrim {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.mega-menu .mm-mobile .mm-drawer-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 88px 1fr 88px;
+  align-items: center;
+  height: 58px;
+  padding: 0 8px;
+  background: var(--mm-bg);
+  border-bottom: 1px solid var(--mm-line);
+}
+
+.mega-menu .mm-drawer-title {
+  grid-column: 2;
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 700;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mega-menu .mm-back {
+  grid-column: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  justify-self: start;
+  padding: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.mega-menu .mm-back[hidden] {
+  display: none;
+}
+
+.mega-menu .mm-close {
+  grid-column: 3;
+  justify-self: end;
+  display: inline-flex;
+  padding: 10px;
+  font-size: 20px;
+}
+
+.mega-menu .mm-mobile .mm-bar {
+  flex-flow: column nowrap;
+  align-items: stretch;
+  gap: 0;
+  padding: 6px 0;
+}
+
+.mega-menu .mm-mobile .mm-top {
+  width: 100%;
+  justify-content: flex-start;
+  padding: 16px 22px;
+  border-radius: 0;
+  font-size: 17px;
+}
+
+.mega-menu .mm-mobile .mm-top::after {
+  display: none;
+}
+
+.mega-menu .mm-mobile .mm-top .mm-chevron {
+  margin-left: auto;
+  transform: rotate(-90deg);
+}
+
+.mega-menu .mm-mobile.mm-drilled .mm-bar > li:not(.mm-open),
+.mega-menu .mm-mobile.mm-drilled .mm-open > .mm-top {
+  display: none;
+}
+
+.mega-menu .mm-mobile .mm-panel {
+  position: static;
+  display: none;
+  border-radius: 0;
+  box-shadow: none;
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition: none;
+}
+
+.mega-menu .mm-mobile .mm-open > .mm-panel {
+  display: block;
+  animation: mm-slide-in 0.3s var(--mm-ease) both;
+}
+
+.mega-menu .mm-mobile .mm-panel-inner,
+.mega-menu .mm-mobile .mm-panel-inner.mm-has-promo {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+  padding: 6px 22px 32px;
+}
+
+.mega-menu .mm-mobile .mm-panel-head {
+  margin-bottom: 4px;
+  padding: 12px 0 14px;
+}
+
+.mega-menu .mm-mobile .mm-columns {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+
+.mega-menu .mm-mobile .mm-open .mm-col {
+  animation: none;
+  border-bottom: 1px solid var(--mm-line);
+}
+
+.mega-menu .mm-mobile .mm-col-title {
+  flex: 1;
+  margin: 0;
+  padding: 14px 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.mega-menu .mm-mobile .mm-col-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  font-size: 14px;
+  transition: transform 0.25s var(--mm-ease);
+}
+
+.mega-menu .mm-mobile .mm-col-open .mm-col-toggle {
+  transform: rotate(180deg);
+}
+
+.mega-menu .mm-mobile .mm-col-links,
+.mega-menu .mm-mobile .mm-view-all {
+  display: none;
+}
+
+.mega-menu .mm-mobile .mm-col-open .mm-col-links {
+  display: block;
+  padding: 0 0 12px 12px;
+}
+
+.mega-menu .mm-mobile .mm-col-open .mm-view-all {
+  display: inline-flex;
+  margin: 0 0 14px 12px;
+}
+
+.mega-menu .mm-mobile [data-layout="list"] .mm-col-title {
+  padding: 14px 0;
+}
+
+.mega-menu .mm-mobile .mm-promo {
+  min-height: 200px;
+}
+
+/* Admin preview: the drawer renders inline, already open. */
+.mega-menu .mm-inline .mm-drawer {
+  position: relative;
+  inset: auto;
+  z-index: auto;
+  width: 100%;
+  max-height: 620px;
+  border: 1px solid var(--mm-line);
+  border-radius: 18px;
+  box-shadow: 0 20px 50px -24px rgb(0 0 0 / 30%);
+  transform: none;
+}
+
+.mega-menu .mm-inline .mm-toggle,
+.mega-menu .mm-inline .mm-close,
+.mega-menu .mm-inline .mm-scrim {
+  display: none;
+}
+
+/*
+ * Embedded in the EDS header: the header owns the hamburger and drawer.
+ * Desktop panels drop full-width from the header's bottom edge.
+ */
+.mega-menu .mm-embedded:not(.mm-mobile) .mm-panel {
+  position: fixed;
+  top: var(--mm-scrim-top, 64px);
+  left: 0;
+  right: 0;
+  max-height: calc(100vh - var(--mm-scrim-top, 64px) - 24px);
+  overflow-y: auto;
+  border-radius: 0 0 var(--mm-radius) var(--mm-radius);
+}
+
+.mega-menu .mm-embedded:not(.mm-mobile) .mm-panel::before {
+  display: none;
+}
+
+.mega-menu .mm-embedded.mm-mobile .mm-drawer {
+  position: static;
+  inset: auto;
+  z-index: auto;
+  width: auto;
+  overflow: visible;
+  box-shadow: none;
+  transform: none;
+  transition: none;
+}
+
+.mega-menu .mm-embedded .mm-toggle,
+.mega-menu .mm-embedded .mm-close,
+.mega-menu .mm-embedded.mm-mobile .mm-scrim,
+.mega-menu .mm-embedded.mm-mobile:not(.mm-drilled) .mm-drawer-head {
+  display: none;
+}
+
+.mega-menu .mm-embedded.mm-mobile .mm-drawer-head {
+  position: static;
+}
+
+body.mm-lock {
+  overflow: hidden;
+}
+
+@keyframes mm-rise {
+  from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+  to {
+  opacity: 1;
+  transform: none;
+}
+}
+
+@keyframes mm-slide-in {
+  from {
+  opacity: 0;
+  transform: translateX(24px);
+}
+
+  to {
+  opacity: 1;
+  transform: none;
+}
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mega-menu *,
+  .mega-menu *::before,
+  .mega-menu *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

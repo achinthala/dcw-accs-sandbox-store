@@ -211,6 +211,30 @@ header nav .nav-sections ul>li:empty {
   display: none;
 }
 
+/* mega menu (blocks/mega-menu) takes the place of the authored sections */
+header nav.nav-has-mega-menu .nav-sections {
+  display: none;
+}
+
+header nav .nav-mega-menu {
+  grid-area: sections;
+  flex: 1 1 auto;
+  display: none;
+}
+
+header nav[aria-expanded='true'] .nav-mega-menu {
+  display: block;
+  align-self: start;
+}
+
+@media (min-width: 900px) {
+  header nav .nav-mega-menu,
+  header nav[aria-expanded='true'] .nav-mega-menu {
+    display: block;
+    align-self: center;
+  }
+}
+
 @media (min-width: 900px) {
   header nav .nav-sections {
     display: block;
