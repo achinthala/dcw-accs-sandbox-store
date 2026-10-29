@@ -140,7 +140,8 @@
 
 /* ---------- Badges ---------- */
 
-.mega-menu .mm-badge {
+.mega-menu .mm-badge,
+header nav .nav-sections .mega-menu .mm-badge {
   display: inline-block;
   padding: 3px 7px;
   border-radius: 999px;
@@ -149,24 +150,29 @@
   letter-spacing: 0.06em;
   line-height: 1;
   text-transform: uppercase;
+  text-decoration: none;
 }
 
-.mega-menu .mm-badge-new {
+.mega-menu .mm-badge-new,
+header nav .nav-sections .mega-menu .mm-badge-new {
   background: #dcfce7;
   color: #166534;
 }
 
-.mega-menu .mm-badge-info {
+.mega-menu .mm-badge-info,
+header nav .nav-sections .mega-menu .mm-badge-info {
   background: #dbeafe;
   color: #1e40af;
 }
 
-.mega-menu .mm-badge-sale {
-  background: var(--mm-accent);
+.mega-menu .mm-badge-sale,
+header nav .nav-sections .mega-menu .mm-badge-sale {
+  background: var(--mm-accent, #d4380d);
   color: #fff;
 }
 
-.mega-menu .mm-badge-hot {
+.mega-menu .mm-badge-hot,
+header nav .nav-sections .mega-menu .mm-badge-hot {
   background: linear-gradient(135deg, #ff7a18, #e5195e);
   color: #fff;
 }
@@ -221,8 +227,9 @@
   padding: 26px 32px 32px;
 }
 
+.mega-menu .mm-panel-inner.mm-has-aside,
 .mega-menu .mm-panel-inner.mm-has-promo {
-  grid-template-columns: minmax(0, 1fr) minmax(240px, 300px);
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
 }
 
 .mega-menu .mm-panel-head {
@@ -297,9 +304,11 @@
 }
 
 .mega-menu .mm-col-links {
+  display: block;
   list-style: none;
   margin: 0;
   padding: 0;
+  gap: 0;
 }
 
 .mega-menu .mm-col-links a {
@@ -429,6 +438,63 @@
 
 .mega-menu .mm-promo:hover .mm-promo-cta {
   gap: 10px;
+}
+
+.mega-menu .mm-banners {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mega-menu .mm-banners .mm-promo {
+  flex: 1;
+  min-height: 180px;
+}
+
+.mega-menu .mm-banners .mm-promo:only-child {
+  min-height: 300px;
+}
+
+.mega-menu .mm-products {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin: 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--mm-line);
+}
+
+.mega-menu .mm-product {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  color: inherit;
+}
+
+.mega-menu .mm-product img,
+.mega-menu .mm-product-fallback {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 12px;
+  background: var(--mm-hover);
+}
+
+.mega-menu .mm-product-name {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.mega-menu .mm-product-price {
+  color: var(--mm-muted);
+  font-size: 13px;
+}
+
+.mega-menu .mm-product:hover .mm-product-name {
+  color: var(--mm-accent);
 }
 
 /* ---------- Scrim ---------- */
@@ -579,6 +645,7 @@
 }
 
 .mega-menu .mm-mobile .mm-panel-inner,
+.mega-menu .mm-mobile .mm-panel-inner.mm-has-aside,
 .mega-menu .mm-mobile .mm-panel-inner.mm-has-promo {
   grid-template-columns: minmax(0, 1fr);
   gap: 18px;
@@ -643,6 +710,62 @@
 
 .mega-menu .mm-mobile .mm-promo {
   min-height: 200px;
+}
+
+.mega-menu .mm-mobile .mm-products {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-top: 0;
+  padding-top: 4px;
+}
+
+/*
+ * On a wide header the category menu and the authored da.live list share one
+ * row: categories first, then Account / Search Order. The header is only
+ * `--nav-height` tall, so a second row is clipped. The menu also must not
+ * paint over that list (its bar is position:relative with a high z-index).
+ * Scoped to sections that actually contain the block, so a nav without it
+ * keeps the boilerplate layout.
+ */
+@media (min-width: 900px) {
+  header nav[aria-expanded='true'] .nav-sections:has(.mega-menu) {
+    display: flex;
+    flex-flow: row nowrap;
+    align-items: center;
+    align-self: center;
+    gap: 8px 16px;
+    min-width: 0;
+    overflow: visible;
+    white-space: normal;
+    visibility: visible;
+  }
+
+  header nav .nav-sections:has(.mega-menu) > .mega-menu,
+  header nav .nav-sections:has(.mega-menu) > .mega-menu-wrapper {
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  header nav .nav-sections:has(.mega-menu) .mega-menu .mm {
+    z-index: auto;
+  }
+
+  header nav .nav-sections:has(.mega-menu) .mega-menu .mm-bar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
+  header nav .nav-sections:has(.mega-menu) > .default-content-wrapper {
+    display: block;
+    flex: 0 0 auto;
+    visibility: visible;
+  }
+
+  header nav .nav-sections:has(.mega-menu) > .default-content-wrapper > ul {
+    display: flex;
+    visibility: visible;
+    margin: 0;
+  }
 }
 
 /* Admin preview: the drawer renders inline, already open. */

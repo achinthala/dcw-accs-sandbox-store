@@ -4,7 +4,7 @@
 
 Renders the store's mega menu from the **Mega Menu** App Builder app (`app-builder/megamenu`). Merchants build and publish the menu in Commerce Admin under **Content > Mega Menu**, and this block renders the published JSON. It shows full-width dropdown panels on desktop and a drill-down list on mobile, and it is keyboard accessible.
 
-The header uses it automatically when `mega-menu-endpoint` is set in `config.json`. In that case the authored nav sections are hidden and stay available as the fallback. The block can also be authored on a page.
+The header uses it automatically when `mega-menu-endpoint` is set in `config.json`. Categories render first, then the authored nav list (Account, Search Order, and the rest). If the endpoint is unreachable, only that authored list shows. The block can also be authored on a page.
 
 ## Integration
 
@@ -49,5 +49,5 @@ None.
 
 ### Error Handling
 
-- **Endpoint unreachable or no published menu (404)**: the authored nav sections stay visible (header) or the block hides itself (authored).
+- **Endpoint unreachable or no published menu (404)**: the authored nav list stays visible (header) or the block hides itself (authored).
 - **Stale data**: a cached menu renders immediately while a background request refreshes it.

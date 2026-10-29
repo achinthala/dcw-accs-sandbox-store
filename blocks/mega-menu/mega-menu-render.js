@@ -36,9 +36,28 @@ function el(tag, attrs = {}, ...children) {
   return node;
 }
 
+const BADGE_TONE = {
+  new: { background: '#dcfce7', color: '#166534' },
+  info: { background: '#dbeafe', color: '#1e40af' },
+  sale: { background: 'var(--mm-accent, #d4380d)', color: '#fff' },
+  hot: { background: 'linear-gradient(135deg, #ff7a18, #e5195e)', color: '#fff' },
+};
+
 function badge(item) {
   if (!item.badge?.text) return null;
-  return el('span', { class: `mm-badge mm-badge-${item.badge.tone || 'new'}`, text: item.badge.text });
+  const tone = item.badge.tone || 'new';
+  const paint = BADGE_TONE[tone] || BADGE_TONE.new;
+  // Inline color wins over the boilerplate `a` and `nav-sections` link rules,
+  // which otherwise paint every badge the same brand gray.
+  return el('span', {
+    class: `mm-badge mm-badge-${tone}`,
+    text: item.badge.text,
+    style: {
+      background: paint.background,
+      color: paint.color,
+      'text-decoration': 'none',
+    },
+  });
 }
 
 function column(col, index, showViewAll) {
@@ -47,7 +66,9 @@ function column(col, index, showViewAll) {
     { class: 'mm-col-links', id: `mm-col-${uid += 1}` },
     col.links.map((link) => el('li', {}, el('a', { href: link.url, text: link.label }))),
   );
-  const title = el('a', { class: 'mm-col-title', href: col.url, text: col.label });
+  const title = col.url
+    ? el('a', { class: 'mm-col-title', href: col.url, text: col.label })
+    : el('span', { class: 'mm-col-title', text: col.label });
   const toggle = col.links.length
     ? el('button', {
       class: 'mm-col-toggle', type: 'button', 'aria-expanded': 'false', 'aria-controls': list.id, 'aria-label': `Show ${col.label} links`, html: ICON_CHEVRON,
@@ -65,9 +86,18 @@ function column(col, index, showViewAll) {
   );
 }
 
-function promo(item) {
-  const p = item.promo;
-  if (!p || (!p.title && !p.imageUrl)) return null;
+function bannerList(item) {
+  if (Array.isArray(item.banners) && item.banners.length) return item.banners;
+  if (item.promo && (item.promo.title || item.promo.imageUrl || item.promo.text)) return [item.promo];
+  return [];
+}
+
+function productList(item) {
+  return (item.products ?? []).filter((p) => p && p.url && (p.name || p.sku));
+}
+
+function promoCard(p, href) {
+  if (!p || (!p.title && !p.imageUrl && !p.text)) return null;
   const media = p.imageUrl
     ? el('img', {
       src: p.imageUrl, alt: '', loading: 'lazy', decoding: 'async', width: '640', height: '800',
@@ -75,7 +105,7 @@ function promo(item) {
     : null;
   return el(
     'a',
-    { class: `mm-promo${media ? '' : ' mm-promo-plain'}`, href: p.ctaUrl || item.url },
+    { class: `mm-promo${media ? '' : ' mm-promo-plain'}`, href: p.ctaUrl || href },
     media,
     el(
       'span',
@@ -88,9 +118,33 @@ function promo(item) {
   );
 }
 
+function banners(item) {
+  const cards = bannerList(item).map((b) => promoCard(b, b.ctaUrl || item.url)).filter(Boolean);
+  return cards.length ? el('div', { class: 'mm-banners' }, cards) : null;
+}
+
+function products(item) {
+  const list = productList(item);
+  if (!list.length) return null;
+  return el(
+    'div',
+    { class: 'mm-products' },
+    list.map((p) => el(
+      'a',
+      { class: 'mm-product', href: p.url },
+      p.imageUrl
+        ? el('img', { src: p.imageUrl, alt: '', loading: 'lazy', decoding: 'async', width: '320', height: '320' })
+        : el('span', { class: 'mm-product-fallback', 'aria-hidden': 'true' }),
+      el('span', { class: 'mm-product-name', text: p.name || p.sku }),
+      p.price ? el('span', { class: 'mm-product-price', text: p.price }) : null,
+    )),
+  );
+}
+
 function panel(item, panelId, showViewAll) {
-  const promoCard = promo(item);
-  const cols = item.children.map((col, i) => column(col, i, showViewAll));
+  const bannerRail = banners(item);
+  const productRow = products(item);
+  const cols = (item.children ?? []).map((col, i) => column(col, i, showViewAll));
   const head = el(
     'div',
     { class: 'mm-panel-head' },
@@ -105,14 +159,17 @@ function panel(item, panelId, showViewAll) {
     class: 'mm-panel', id: panelId, 'data-layout': item.layout, style: { '--mm-cols': String(item.columns || 4) },
   }, el(
     'div',
-    { class: `mm-panel-inner${promoCard ? ' mm-has-promo' : ''}` },
-    el('div', { class: 'mm-panel-main' }, head, el('div', { class: 'mm-columns' }, cols)),
-    promoCard,
+    { class: `mm-panel-inner${bannerRail ? ' mm-has-aside' : ''}` },
+    el('div', { class: 'mm-panel-main' }, head, cols.length ? el('div', { class: 'mm-columns' }, cols) : null),
+    bannerRail,
+    productRow,
   ));
 }
 
 function topItem(item, showViewAll) {
-  const hasPanel = item.layout !== 'link' && (item.children.length > 0 || item.promo);
+  const hasPanel = item.layout !== 'link' && (
+    (item.children?.length > 0) || bannerList(item).length > 0 || productList(item).length > 0
+  );
   const classes = ['mm-item', hasPanel && 'mm-has-panel', item.highlight && 'mm-highlight'].filter(Boolean).join(' ');
   const label = [el('span', { class: 'mm-label', text: item.label }), badge(item)];
 

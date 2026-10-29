@@ -222,20 +222,17 @@ export default async function decorate(block) {
       });
   }
 
-  /** Mega Menu (App Builder) — replaces the authored sections when available */
+  /** Mega Menu (App Builder) sits in front of the da.live link list. */
   const megaMenuEndpoint = getConfigValue('mega-menu-endpoint');
   if (navSections && megaMenuEndpoint) {
     const megaMenu = document.createElement('div');
     megaMenu.className = 'nav-mega-menu';
-    navSections.after(megaMenu);
-    // Hide the authored sections up front to avoid a flash; restored on failure.
-    nav.classList.add('nav-has-mega-menu');
+    const authoredList = navSections.querySelector(':scope > .default-content-wrapper');
+    if (authoredList) navSections.insertBefore(megaMenu, authoredList);
+    else navSections.prepend(megaMenu);
     loadMegaMenu(megaMenu, { endpoint: megaMenuEndpoint, embedded: true, anchor: nav })
       .then((ok) => {
-        if (!ok) {
-          megaMenu.remove();
-          nav.classList.remove('nav-has-mega-menu');
-        }
+        if (!ok) megaMenu.remove();
       });
   }
 

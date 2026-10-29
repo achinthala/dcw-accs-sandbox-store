@@ -17,6 +17,7 @@ import { events } from '@dropins/tools/event-bus.js';
 import { getConfigValue, getHeaders } from '@dropins/tools/lib/aem/configs.js';
 import { loadCSS, readBlockConfig } from '../../scripts/aem.js';
 import { renderMegaMenu } from './mega-menu-render.js';
+import { placeBeforeDaNav } from './mega-menu-place.js';
 
 const CACHE_PREFIX = 'mega-menu:';
 const FRESH_MS = 5 * 60 * 1000;
@@ -75,6 +76,15 @@ export async function loadMegaMenu(container, {
   let groupHash = GUEST_GROUP_HASH;
 
   const show = (menu) => {
+    if (menu.settings?.enabled === false) {
+      rendered?.destroy();
+      rendered = null;
+      container.replaceChildren();
+      container.hidden = true;
+      shownVersion = `${menu.version}-off`;
+      return;
+    }
+    container.hidden = false;
     rendered?.destroy();
     rendered = renderMegaMenu(container, menu, { breakpoint, embedded, anchor });
     shownVersion = `${menu.version}-${menu.customerGroup}`;
@@ -120,11 +130,15 @@ export async function loadMegaMenu(container, {
  * @param {Element} block the block
  */
 export default async function decorate(block) {
+  // Do this before the header labels nav sections, and before the fetch.
+  const inNav = placeBeforeDaNav(block);
   const config = readBlockConfig(block);
   const fallback = [...block.children];
   const ok = await loadMegaMenu(block, {
     endpoint: config.endpoint || getConfigValue('mega-menu-endpoint'),
     storeView: config['store-view'] || defaultStoreView(),
+    embedded: inNav,
+    anchor: block.closest('header') || undefined,
   });
   if (!ok) {
     block.replaceChildren(...fallback);

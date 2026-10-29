@@ -211,14 +211,10 @@ header nav .nav-sections ul>li:empty {
   display: none;
 }
 
-/* mega menu (blocks/mega-menu) takes the place of the authored sections */
-header nav.nav-has-mega-menu .nav-sections {
-  display: none;
-}
-
+/* mega menu leads the authored list inside .nav-sections */
 header nav .nav-mega-menu {
-  grid-area: sections;
   flex: 1 1 auto;
+  min-width: 0;
   display: none;
 }
 
