@@ -5,3 +5,4 @@ mountpoints:
 
 folders:
   /products/: /products/default
+  /gear/: /catalog/default
